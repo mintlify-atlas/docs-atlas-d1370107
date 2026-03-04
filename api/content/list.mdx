@@ -12,17 +12,17 @@ This endpoint requires authentication via JWT token.
 
 <CodeGroup>
 ```bash cURL
-curl -X GET "https://api.example.com/api/v1/content" \
+curl -X GET "http://localhost:8000/api/v1/content" \
   -H "Authorization: Bearer YOUR_JWT_TOKEN"
 ```
 
 ```bash With Filters
-curl -X GET "https://api.example.com/api/v1/content?type=article&tag=ai" \
+curl -X GET "http://localhost:8000/api/v1/content?type=article&tag=ai" \
   -H "Authorization: Bearer YOUR_JWT_TOKEN"
 ```
 
 ```javascript JavaScript
-const response = await fetch('https://api.example.com/api/v1/content', {
+const response = await fetch('http://localhost:8000/api/v1/content', {
   method: 'GET',
   headers: {
     'Authorization': 'Bearer YOUR_JWT_TOKEN'
@@ -39,7 +39,7 @@ const params = new URLSearchParams({
 });
 
 const response = await fetch(
-  `https://api.example.com/api/v1/content?${params}`,
+  `http://localhost:8000/api/v1/content?${params}`,
   {
     method: 'GET',
     headers: {
@@ -55,7 +55,7 @@ const data = await response.json();
 import requests
 
 response = requests.get(
-    'https://api.example.com/api/v1/content',
+    'http://localhost:8000/api/v1/content',
     headers={
         'Authorization': 'Bearer YOUR_JWT_TOKEN'
     }
@@ -68,7 +68,7 @@ data = response.json()
 import requests
 
 response = requests.get(
-    'https://api.example.com/api/v1/content',
+    'http://localhost:8000/api/v1/content',
     headers={
         'Authorization': 'Bearer YOUR_JWT_TOKEN'
     },

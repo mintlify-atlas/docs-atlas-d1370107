@@ -38,7 +38,7 @@ Creates a new user account with the provided credentials. The password is hashed
 ## Example Request
 
 ```bash
-curl -X POST https://api.example.com/api/v1/auth/signup \
+curl -X POST http://localhost:8000/api/v1/auth/signup \
   -H "Content-Type: application/json" \
   -d '{
     "username": "johndoe",
@@ -115,7 +115,7 @@ The JWT token is signed with a secret key and includes:
 Include the returned token in subsequent API requests:
 
 ```bash
-curl -X GET https://api.example.com/api/v1/protected-endpoint \
+curl -X GET http://localhost:8000/api/v1/protected-endpoint \
   -H "Authorization: Bearer YOUR_TOKEN_HERE"
 ```
 

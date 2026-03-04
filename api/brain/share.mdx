@@ -60,7 +60,7 @@ This endpoint requires authentication. Include a valid JWT token in the Authoriz
 ### Example: Enable Sharing
 
 ```bash
-curl -X POST https://api.example.com/api/v1/brain/share \
+curl -X POST http://localhost:8000/api/v1/brain/share \
   -H "Authorization: Bearer YOUR_JWT_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
@@ -81,7 +81,7 @@ curl -X POST https://api.example.com/api/v1/brain/share \
 ### Example: Check Existing Share Link
 
 ```bash
-curl -X POST https://api.example.com/api/v1/brain/share \
+curl -X POST http://localhost:8000/api/v1/brain/share \
   -H "Authorization: Bearer YOUR_JWT_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
@@ -102,7 +102,7 @@ curl -X POST https://api.example.com/api/v1/brain/share \
 ### Example: Disable Sharing
 
 ```bash
-curl -X POST https://api.example.com/api/v1/brain/share \
+curl -X POST http://localhost:8000/api/v1/brain/share \
   -H "Authorization: Bearer YOUR_JWT_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
@@ -183,7 +183,7 @@ curl -X POST https://api.example.com/api/v1/brain/share \
 ### Example Request
 
 ```bash
-curl -X GET https://api.example.com/api/v1/brain/a3f8d9e2b1c4
+curl -X GET http://localhost:8000/api/v1/brain/a3f8d9e2b1c4
 ```
 
 ### Example Response

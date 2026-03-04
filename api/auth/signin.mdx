@@ -38,7 +38,7 @@ Authenticates a user with their username and password. The provided password is 
 ## Example Request
 
 ```bash
-curl -X POST https://api.example.com/api/v1/auth/signin \
+curl -X POST http://localhost:8000/api/v1/auth/signin \
   -H "Content-Type: application/json" \
   -d '{
     "username": "johndoe",
@@ -126,7 +126,7 @@ const token = jwt.sign({ userId: user.id }, JWT_SECRET, {
 Include the token in the Authorization header for authenticated requests:
 
 ```bash
-curl -X GET https://api.example.com/api/v1/protected-endpoint \
+curl -X GET http://localhost:8000/api/v1/protected-endpoint \
   -H "Authorization: Bearer YOUR_TOKEN_HERE"
 ```
 
