@@ -1,0 +1,102 @@
+{
+  "projectType": "saas",
+  "projectName": "MIND-f-LAYER",
+  "projectDescription": "AI-powered Second Brain application for storing, managing, and semantically querying your digital knowledge using RAG technology.",
+  "theme": "palm",
+  "primaryColor": "#8B5CF6",
+  "lightColor": "#A78BFA",
+  "darkColor": "#6D28D9",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Get Started",
+            "pages": [
+              "introduction",
+              "quickstart",
+              "installation"
+            ]
+          },
+          {
+            "group": "Core Features",
+            "pages": [
+              "features/semantic-search",
+              "features/ai-query",
+              "features/content-management",
+              "features/knowledge-vault"
+            ]
+          },
+          {
+            "group": "Architecture",
+            "pages": [
+              "architecture/overview",
+              "architecture/rag-pipeline",
+              "architecture/vector-embeddings",
+              "architecture/database"
+            ]
+          },
+          {
+            "group": "Guides",
+            "pages": [
+              "guides/setup",
+              "guides/saving-content",
+              "guides/querying-brain",
+              "guides/sharing"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "API Reference",
+        "groups": [
+          {
+            "group": "Authentication",
+            "pages": [
+              "api/auth/signup",
+              "api/auth/signin"
+            ]
+          },
+          {
+            "group": "Content",
+            "pages": [
+              "api/content/create",
+              "api/content/list",
+              "api/content/delete"
+            ]
+          },
+          {
+            "group": "Brain AI",
+            "pages": [
+              "api/brain/query",
+              "api/brain/search",
+              "api/brain/share"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "AI-powered semantic search using vector embeddings",
+    "RAG (Retrieval-Augmented Generation) for intelligent Q&A",
+    "Multi-format content storage (articles, videos, tweets, documents)",
+    "Tag-based organization and filtering",
+    "Public sharing via unique share links",
+    "JWT-based authentication and user accounts",
+    "Cosine similarity ranking for relevance scoring",
+    "Exponential backoff retry mechanism for AI API calls"
+  ],
+  "publicApiSurface": [
+    "POST /api/v1/auth/signup - Create user account",
+    "POST /api/v1/auth/signin - Authenticate and get JWT token",
+    "POST /api/v1/content - Save new content with auto-embedding",
+    "GET /api/v1/content - List content with filters (type, tag)",
+    "DELETE /api/v1/content - Delete content item",
+    "POST /api/v1/brain/query - AI-powered Q&A against saved content",
+    "POST /api/v1/brain/search - Semantic similarity search",
+    "POST /api/v1/brain/share - Toggle public sharing",
+    "GET /api/v1/brain/:shareLink - View publicly shared brain"
+  ]
+}
