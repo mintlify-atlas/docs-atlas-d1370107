@@ -1,0 +1,710 @@
+---
+title: 'Content Management'
+description: 'Organize, filter, and manage your Second Brain content with tags, types, and CRUD operations'
+icon: 'folder-tree'
+---
+
+## Overview
+
+MIND-f-LAYER provides a comprehensive content management system for organizing your Second Brain. Save any type of digital content, categorize it with tags, filter your collection, and maintain your knowledge base with full CRUD operations.
+
+<Info>
+  All content is private by default and tied to your authenticated user account. Each user's content is completely isolated.
+</Info>
+
+## Content Types
+
+MIND-f-LAYER supports seven distinct content types, each optimized for different kinds of information:
+
+```typescript
+// From content.controller.ts:9-17
+type: z.enum([
+    "article",
+    "video",
+    "tweet",
+    "document",
+    "audio",
+    "image",
+    "other",
+])
+```
+
+<CardGroup cols={2}>
+  <Card title="Article" icon="newspaper">
+    Blog posts, news articles, tutorials, research papers, and written web content
+  </Card>
+  <Card title="Video" icon="video">
+    YouTube videos, course recordings, conference talks, and video tutorials
+  </Card>
+  <Card title="Tweet" icon="x-twitter">
+    Twitter/X posts, threads, social media insights, and quick notes
+  </Card>
+  <Card title="Document" icon="file-pdf">
+    PDFs, slides, ebooks, whitepapers, and formal documents
+  </Card>
+  <Card title="Audio" icon="podcast">
+    Podcasts, audiobooks, interviews, and music references
+  </Card>
+  <Card title="Image" icon="image">
+    Infographics, diagrams, screenshots, and visual references
+  </Card>
+  <Card title="Other" icon="ellipsis">
+    Any content that doesn't fit other categories
+  </Card>
+</CardGroup>
+
+## Data Model
+
+### Content Schema
+
+```sql
+-- From db.ts:24-34
+CREATE TABLE IF NOT EXISTS content (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    link TEXT NOT NULL,
+    type TEXT NOT NULL,
+    title TEXT NOT NULL,
+    description TEXT DEFAULT '',
+    userId INTEGER NOT NULL,
+    createdAt TEXT DEFAULT (datetime('now')),
+    FOREIGN KEY (userId) REFERENCES users(id) ON DELETE CASCADE
+);
+```
+
+### Content Properties
+
+<ResponseField name="id" type="integer">
+  Auto-incrementing unique identifier
+</ResponseField>
+
+<ResponseField name="link" type="string" required>
+  Valid URL to the original content (validated on creation)
+</ResponseField>
+
+<ResponseField name="type" type="enum" required>
+  One of: `article`, `video`, `tweet`, `document`, `audio`, `image`, `other`
+</ResponseField>
+
+<ResponseField name="title" type="string" required>
+  Content title (1-200 characters)
+</ResponseField>
+
+<ResponseField name="description" type="string">
+  Optional description or summary (max 1000 characters)
+</ResponseField>
+
+<ResponseField name="tags" type="array">
+  Array of tag strings (max 10 tags, each 1-50 characters)
+</ResponseField>
+
+<ResponseField name="userId" type="integer">
+  Foreign key to the owning user (automatically set from JWT token)
+</ResponseField>
+
+<ResponseField name="createdAt" type="string">
+  ISO timestamp of when the content was saved
+</ResponseField>
+
+## Creating Content
+
+### API Endpoint
+
+```bash
+POST /api/v1/content
+Authorization: Bearer <your-token>
+Content-Type: application/json
+
+{
+  "link": "https://example.com/article",
+  "type": "article",
+  "title": "Understanding React Hooks",
+  "description": "Comprehensive guide to useState, useEffect, and custom hooks",
+  "tags": ["react", "hooks", "javascript"]
+}
+```
+
+### Validation
+
+```typescript
+// From content.controller.ts:7-21
+const contentSchema = z.object({
+    link: z.string().url("Must be a valid URL"),
+    type: z.enum([
+        "article", "video", "tweet", "document", 
+        "audio", "image", "other"
+    ]),
+    title: z.string().min(1, "Title is required").max(200),
+    description: z.string().max(1000).optional().default(""),
+    tags: z.array(z.string().min(1).max(50)).max(10).optional().default([]),
+})
+```
+
+<Note>
+  All fields are validated using Zod schemas. Invalid requests return 400 with detailed error messages.
+</Note>
+
+### Implementation
+
+```typescript
+// From content.controller.ts:28-103
+export async function createContent(req: Request, res: Response) {
+    const userId = req.userId  // From JWT token via auth middleware
+    const parsed = contentSchema.parse(req.body)
+    const { link, type, title, description, tags } = parsed
+    const db = getDB()
+
+    // 1. Insert the content
+    const result = await db.run(
+        `INSERT INTO content (link, type, title, description, userId) 
+         VALUES (?, ?, ?, ?, ?)`,
+        [link, type, title, description, userId]
+    )
+    const contentId = result.lastID
+
+    // 2. Handle tags (upsert and link)
+    const tagIds: number[] = []
+    for (const tagTitle of tags) {
+        await db.run(
+            `INSERT OR IGNORE INTO tags (title) VALUES (?)`,
+            [tagTitle.toLowerCase()]  // Normalized to lowercase
+        )
+        const tag = await db.get(
+            `SELECT id FROM tags WHERE title = ?`,
+            [tagTitle.toLowerCase()]
+        )
+        if (tag) {
+            tagIds.push(tag.id)
+            await db.run(
+                `INSERT OR IGNORE INTO content_tags (contentId, tagId) 
+                 VALUES (?, ?)`,
+                [contentId, tag.id]
+            )
+        }
+    }
+
+    // 3. Generate and store embedding for semantic search
+    const embeddingText = `${title}. ${description}. Tags: ${tags.join(", ")}. Type: ${type}`
+    try {
+        const embedding = await generateEmbedding(embeddingText)
+        await db.run(
+            `INSERT INTO embeddings (contentId, embedding) VALUES (?, ?)`,
+            [contentId, JSON.stringify(embedding)]
+        )
+    } catch (embErr) {
+        // Don't fail content creation if embedding fails
+        console.error("Failed to generate embedding:", embErr)
+    }
+
+    res.status(201).json({
+        message: "Content created successfully",
+        content: { id: contentId, link, type, title, description, tags, userId }
+    })
+}
+```
+
+### Response
+
+```json
+{
+  "message": "Content created successfully",
+  "content": {
+    "id": 42,
+    "link": "https://example.com/article",
+    "type": "article",
+    "title": "Understanding React Hooks",
+    "description": "Comprehensive guide to useState, useEffect, and custom hooks",
+    "tags": ["react", "hooks", "javascript"],
+    "userId": 7
+  }
+}
+```
+
+## Tags System
+
+### Tag Management
+
+Tags are automatically managed through a many-to-many relationship:
+
+```sql
+-- From db.ts:36-51
+CREATE TABLE IF NOT EXISTS tags (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    title TEXT UNIQUE NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS content_tags (
+    contentId INTEGER,
+    tagId INTEGER,
+    PRIMARY KEY (contentId, tagId),
+    FOREIGN KEY (contentId) REFERENCES content(id) ON DELETE CASCADE,
+    FOREIGN KEY (tagId) REFERENCES tags(id) ON DELETE CASCADE
+);
+```
+
+### Tag Features
+
+<Steps>
+  <Step title="Automatic Creation">
+    Tags are created automatically when you first use them. No need to pre-define tags.
+  </Step>
+  <Step title="Case Normalization">
+    All tags are stored in lowercase for consistency: `"React"` → `"react"`
+  </Step>
+  <Step title="Reusability">
+    Tags are shared across content items. Using the same tag multiple times links to the same tag entity.
+  </Step>
+  <Step title="Cascading Deletes">
+    When you delete content, its tag associations are automatically removed.
+  </Step>
+</Steps>
+
+### Tag Limits
+
+- Maximum tags per content item: **10**
+- Maximum tag length: **50 characters**
+- Minimum tag length: **1 character**
+
+## Retrieving Content
+
+### Get All Content
+
+```bash
+GET /api/v1/content
+Authorization: Bearer <your-token>
+```
+
+Returns all content for the authenticated user, sorted by creation date (newest first).
+
+### Filtering by Type
+
+```bash
+GET /api/v1/content?type=article
+Authorization: Bearer <your-token>
+```
+
+<ParamField query="type" type="string">
+  Filter by content type: `article`, `video`, `tweet`, `document`, `audio`, `image`, or `other`
+</ParamField>
+
+### Filtering by Tag
+
+```bash
+GET /api/v1/content?tag=react
+Authorization: Bearer <your-token>
+```
+
+<ParamField query="tag" type="string">
+  Filter by tag (case-insensitive, normalized to lowercase)
+</ParamField>
+
+### Combined Filters
+
+```bash
+GET /api/v1/content?type=video&tag=tutorial
+Authorization: Bearer <your-token>
+```
+
+Filters are applied with **AND** logic (both conditions must match).
+
+### Implementation
+
+```typescript
+// From content.controller.ts:106-168
+export async function getContent(req: Request, res: Response) {
+    const userId = req.userId
+    const db = getDB()
+    const { type, tag } = req.query
+
+    let contentQuery = `
+        SELECT c.id, c.link, c.type, c.title, c.description, c.createdAt
+        FROM content c
+        WHERE c.userId = ?
+    `
+    const params: any[] = [userId]
+
+    if (type && typeof type === "string") {
+        contentQuery += ` AND c.type = ?`
+        params.push(type)
+    }
+
+    if (tag && typeof tag === "string") {
+        contentQuery += ` AND c.id IN (
+            SELECT ct.contentId FROM content_tags ct
+            JOIN tags t ON ct.tagId = t.id
+            WHERE t.title = ?
+        )`
+        params.push(tag.toLowerCase())
+    }
+
+    contentQuery += ` ORDER BY c.createdAt DESC`
+
+    const contents = await db.all(contentQuery, params)
+
+    // Fetch tags for each content item
+    const result = await Promise.all(
+        contents.map(async (content: any) => {
+            const tags = await db.all(
+                `SELECT t.title FROM tags t
+                 JOIN content_tags ct ON t.id = ct.tagId
+                 WHERE ct.contentId = ?`,
+                [content.id]
+            )
+            return {
+                ...content,
+                tags: tags.map((t: any) => t.title),
+            }
+        })
+    )
+
+    res.status(200).json({
+        message: "Content fetched successfully",
+        count: result.length,
+        content: result,
+    })
+}
+```
+
+### Response
+
+```json
+{
+  "message": "Content fetched successfully",
+  "count": 2,
+  "content": [
+    {
+      "id": 42,
+      "link": "https://example.com/react-hooks",
+      "type": "article",
+      "title": "Understanding React Hooks",
+      "description": "Comprehensive guide to hooks",
+      "createdAt": "2026-03-04T10:30:00Z",
+      "tags": ["react", "hooks", "javascript"]
+    },
+    {
+      "id": 38,
+      "link": "https://example.com/react-tutorial",
+      "type": "video",
+      "title": "React Crash Course",
+      "description": "Complete React tutorial for beginners",
+      "createdAt": "2026-03-03T15:20:00Z",
+      "tags": ["react", "tutorial", "beginner"]
+    }
+  ]
+}
+```
+
+## Deleting Content
+
+### API Endpoint
+
+```bash
+DELETE /api/v1/content
+Authorization: Bearer <your-token>
+Content-Type: application/json
+
+{
+  "contentId": 42
+}
+```
+
+<ParamField body="contentId" type="integer" required>
+  ID of the content item to delete
+</ParamField>
+
+### Authorization Check
+
+The system verifies that the content belongs to the authenticated user:
+
+```typescript
+// From content.controller.ts:183-192
+const content = await db.get(
+    `SELECT id FROM content WHERE id = ? AND userId = ?`,
+    [contentId, userId]
+)
+
+if (!content) {
+    return res
+        .status(404)
+        .json({ error: "Content not found or not authorized" })
+}
+```
+
+### Cascading Deletes
+
+When content is deleted, related data is automatically removed:
+
+- **Tag associations** in `content_tags` table
+- **Embeddings** in `embeddings` table
+
+```typescript
+// From content.controller.ts:194-196
+// CASCADE will handle content_tags and embeddings
+await db.run(`DELETE FROM content WHERE id = ?`, [contentId])
+```
+
+### Response
+
+```json
+{
+  "message": "Content deleted successfully"
+}
+```
+
+## Sharing Your Brain
+
+### Enable Sharing
+
+Generate a public share link for your entire content collection:
+
+```bash
+POST /api/v1/content/share
+Authorization: Bearer <your-token>
+Content-Type: application/json
+
+{
+  "share": true
+}
+```
+
+### Response
+
+```json
+{
+  "message": "Share link created successfully",
+  "hash": "a7f3d9c2e5b1",
+  "shareLink": "/api/v1/brain/a7f3d9c2e5b1"
+}
+```
+
+### Disable Sharing
+
+```bash
+POST /api/v1/content/share
+Authorization: Bearer <your-token>
+Content-Type: application/json
+
+{
+  "share": false
+}
+```
+
+### Access Shared Content
+
+```bash
+GET /api/v1/brain/{shareLink}
+```
+
+<Note>
+  This endpoint is **public** and does not require authentication.
+</Note>
+
+### Share Link Generation
+
+```typescript
+// From content.controller.ts:239-245
+const { v4: uuidv4 } = await import("uuid")
+const hash = uuidv4().replace(/-/g, "").slice(0, 12)
+
+await db.run(`INSERT INTO links (hash, userId) VALUES (?, ?)`, [
+    hash,
+    userId,
+])
+```
+
+Share links are:
+- **12 characters long**
+- **Globally unique** (UUID-based)
+- **Persistent** until explicitly disabled
+- **One per user** (new share requests return existing link)
+
+### Database Schema
+
+```sql
+-- From db.ts:54-61
+CREATE TABLE IF NOT EXISTS links (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    hash TEXT UNIQUE NOT NULL,
+    userId INTEGER NOT NULL,
+    FOREIGN KEY (userId) REFERENCES users(id) ON DELETE CASCADE
+);
+```
+
+## Embedding Generation
+
+When content is created, MIND-f-LAYER automatically generates a semantic embedding for search and AI query features:
+
+```typescript
+// From content.controller.ts:72-82
+const embeddingText = `${title}. ${description}. Tags: ${tags.join(", ")}. Type: ${type}`
+try {
+    const embedding = await generateEmbedding(embeddingText)
+    await db.run(
+        `INSERT INTO embeddings (contentId, embedding) VALUES (?, ?)`,
+        [contentId, JSON.stringify(embedding)]
+    )
+} catch (embErr) {
+    // Don't fail content creation if embedding fails
+    console.error("Failed to generate embedding:", embErr)
+}
+```
+
+<Info>
+  Embedding generation is **non-blocking**. Content creation succeeds even if the embedding API fails, ensuring reliability.
+</Info>
+
+### Embedding Schema
+
+```sql
+-- From db.ts:64-71
+CREATE TABLE IF NOT EXISTS embeddings (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    contentId INTEGER NOT NULL UNIQUE,
+    embedding TEXT NOT NULL,
+    FOREIGN KEY (contentId) REFERENCES content(id) ON DELETE CASCADE
+);
+```
+
+## Error Handling
+
+<CodeGroup>
+
+```json 400 Bad Request - Validation Error
+{
+  "error": "Validation failed",
+  "details": [
+    {
+      "path": ["link"],
+      "message": "Must be a valid URL"
+    },
+    {
+      "path": ["title"],
+      "message": "Title is required"
+    }
+  ]
+}
+```
+
+```json 401 Unauthorized
+{
+  "error": "Unauthorized"
+}
+```
+
+```json 404 Not Found
+{
+  "error": "Content not found or not authorized"
+}
+```
+
+```json 409 Conflict
+{
+  "error": "User already exists"
+}
+```
+
+```json 500 Internal Server Error
+{
+  "error": "Failed to create content"
+}
+```
+
+</CodeGroup>
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Use descriptive titles">
+    Titles are used in semantic search embeddings and AI-generated answers. Make them clear and descriptive.
+    
+    **Good:** "React Performance Optimization Techniques"
+    
+    **Bad:** "React stuff"
+  </Accordion>
+  
+  <Accordion title="Add meaningful descriptions">
+    Descriptions enhance semantic search accuracy. Include key concepts, takeaways, or summaries.
+    
+    **Good:** "Comprehensive guide covering React.memo, useMemo, useCallback, code splitting, and virtualization for large lists"
+    
+    **Bad:** "Nice article"
+  </Accordion>
+  
+  <Accordion title="Tag strategically">
+    - Use 3-5 relevant tags per item
+    - Be consistent with tag naming
+    - Include both broad and specific tags
+    - Use lowercase for consistency
+    
+    **Example:** `["react", "performance", "optimization", "hooks"]`
+  </Accordion>
+  
+  <Accordion title="Choose the right content type">
+    Accurate content types help with filtering and organization:
+    - `article` for written content
+    - `video` for visual learning resources
+    - `tweet` for quick insights and social posts
+    - `document` for formal references
+  </Accordion>
+  
+  <Accordion title="Regular maintenance">
+    - Remove outdated content
+    - Update descriptions for clarity
+    - Consolidate duplicate tags
+    - Archive old resources
+  </Accordion>
+</AccordionGroup>
+
+## Example Workflows
+
+### Saving a Tutorial
+
+```json
+{
+  "link": "https://www.youtube.com/watch?v=example",
+  "type": "video",
+  "title": "Full Stack Development with Next.js 14",
+  "description": "Complete course covering App Router, Server Components, Server Actions, and deployment strategies",
+  "tags": ["nextjs", "fullstack", "tutorial", "react", "typescript"]
+}
+```
+
+### Saving a Research Paper
+
+```json
+{
+  "link": "https://arxiv.org/pdf/example.pdf",
+  "type": "document",
+  "title": "Attention Is All You Need",
+  "description": "Original Transformer architecture paper introducing self-attention mechanism for NLP tasks",
+  "tags": ["transformers", "ai", "nlp", "research", "deep-learning"]
+}
+```
+
+### Saving a Tweet
+
+```json
+{
+  "link": "https://twitter.com/user/status/123456",
+  "type": "tweet",
+  "title": "Kent C. Dodds on React Server Components",
+  "description": "Thread explaining the benefits of RSC and common misconceptions",
+  "tags": ["react", "rsc", "server-components", "twitter-thread"]
+}
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Semantic Search" icon="magnifying-glass" href="/features/semantic-search">
+    Learn how semantic search works with your content
+  </Card>
+  <Card title="AI Query" icon="comments" href="/features/ai-query">
+    Ask questions about your saved content
+  </Card>
+  <Card title="Knowledge Vault" icon="lock" href="/features/knowledge-vault">
+    Understand how your data is secured
+  </Card>
+  <Card title="API Reference" icon="code" href="/api/content/create">
+    Explore detailed API documentation
+  </Card>
+</CardGroup>

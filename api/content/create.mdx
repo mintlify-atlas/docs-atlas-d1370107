@@ -1,0 +1,195 @@
+---
+title: 'Create Content'
+api: 'POST /api/v1/content'
+description: 'Save a new content item with automatic embedding generation'
+---
+
+Add a new content item to your personal knowledge base. The API automatically generates embeddings for semantic search using the content's title, description, tags, and type.
+
+## Authentication
+
+This endpoint requires authentication via JWT token.
+
+<CodeGroup>
+```bash cURL
+curl -X POST https://api.example.com/api/v1/content \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "link": "https://example.com/article",
+    "type": "article",
+    "title": "Understanding Neural Networks",
+    "description": "A comprehensive guide to neural networks and deep learning",
+    "tags": ["ai", "machine-learning", "neural-networks"]
+  }'
+```
+
+```javascript JavaScript
+const response = await fetch('https://api.example.com/api/v1/content', {
+  method: 'POST',
+  headers: {
+    'Authorization': 'Bearer YOUR_JWT_TOKEN',
+    'Content-Type': 'application/json'
+  },
+  body: JSON.stringify({
+    link: 'https://example.com/article',
+    type: 'article',
+    title: 'Understanding Neural Networks',
+    description: 'A comprehensive guide to neural networks and deep learning',
+    tags: ['ai', 'machine-learning', 'neural-networks']
+  })
+});
+
+const data = await response.json();
+```
+
+```python Python
+import requests
+
+response = requests.post(
+    'https://api.example.com/api/v1/content',
+    headers={
+        'Authorization': 'Bearer YOUR_JWT_TOKEN',
+        'Content-Type': 'application/json'
+    },
+    json={
+        'link': 'https://example.com/article',
+        'type': 'article',
+        'title': 'Understanding Neural Networks',
+        'description': 'A comprehensive guide to neural networks and deep learning',
+        'tags': ['ai', 'machine-learning', 'neural-networks']
+    }
+)
+
+data = response.json()
+```
+</CodeGroup>
+
+## Request Body
+
+<ParamField body="link" type="string" required>
+  A valid URL pointing to the content. Must be a properly formatted URL.
+  
+  **Validation**: Must be a valid URL format
+</ParamField>
+
+<ParamField body="type" type="enum" required>
+  The type of content being saved.
+  
+  **Options**: `article`, `video`, `tweet`, `document`, `audio`, `image`, `other`
+</ParamField>
+
+<ParamField body="title" type="string" required>
+  The title or name of the content.
+  
+  **Validation**:
+  - Minimum length: 1 character (required)
+  - Maximum length: 200 characters
+</ParamField>
+
+<ParamField body="description" type="string">
+  A description or summary of the content.
+  
+  **Validation**:
+  - Maximum length: 1000 characters
+  - Default: Empty string if not provided
+</ParamField>
+
+<ParamField body="tags" type="array">
+  An array of tag strings to categorize the content. Tags are automatically converted to lowercase.
+  
+  **Validation**:
+  - Each tag: 1-50 characters
+  - Maximum: 10 tags per content item
+  - Default: Empty array if not provided
+</ParamField>
+
+## Response
+
+<ResponseField name="message" type="string">
+  Success message confirming content creation
+</ResponseField>
+
+<ResponseField name="content" type="object">
+  The created content item
+  
+  <ResponseField name="content.id" type="number">
+    Unique identifier for the content
+  </ResponseField>
+  
+  <ResponseField name="content.link" type="string">
+    The URL of the content
+  </ResponseField>
+  
+  <ResponseField name="content.type" type="string">
+    The content type
+  </ResponseField>
+  
+  <ResponseField name="content.title" type="string">
+    The content title
+  </ResponseField>
+  
+  <ResponseField name="content.description" type="string">
+    The content description
+  </ResponseField>
+  
+  <ResponseField name="content.tags" type="array">
+    Array of tag strings
+  </ResponseField>
+  
+  <ResponseField name="content.userId" type="number">
+    The ID of the user who created the content
+  </ResponseField>
+</ResponseField>
+
+<CodeGroup>
+```json 201 Success
+{
+  "message": "Content created successfully",
+  "content": {
+    "id": 42,
+    "link": "https://example.com/article",
+    "type": "article",
+    "title": "Understanding Neural Networks",
+    "description": "A comprehensive guide to neural networks and deep learning",
+    "tags": ["ai", "machine-learning", "neural-networks"],
+    "userId": 1
+  }
+}
+```
+
+```json 400 Validation Error
+{
+  "error": "Validation failed",
+  "details": [
+    {
+      "code": "invalid_string",
+      "message": "Must be a valid URL",
+      "path": ["link"]
+    }
+  ]
+}
+```
+
+```json 401 Unauthorized
+{
+  "error": "Unauthorized"
+}
+```
+
+```json 500 Server Error
+{
+  "error": "Failed to create content"
+}
+```
+</CodeGroup>
+
+## Auto-Embedding Generation
+
+When content is created, the system automatically generates a semantic embedding vector combining:
+- Title
+- Description
+- Tags
+- Content type
+
+This enables semantic search capabilities across your knowledge base. If embedding generation fails, content creation will still succeed (the error is logged but not returned to the client).

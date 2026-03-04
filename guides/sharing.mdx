@@ -1,0 +1,438 @@
+---
+title: 'Sharing Your Brain'
+description: 'Share your knowledge vault publicly with secure share links'
+icon: 'share-nodes'
+---
+
+MIND-f-LAYER allows you to make your entire knowledge vault public via a unique share link. This is perfect for portfolios, collaborative research, or sharing your curated resources with others.
+
+## How Sharing Works
+
+When you enable sharing:
+
+1. **A unique hash is generated** - A 12-character identifier like `a3f7b9c2e1d4`
+2. **A public link is created** - Anyone with the link can view your content
+3. **No authentication required** - Viewers don't need an account
+4. **Read-only access** - Viewers can see but not modify your content
+
+<Note>
+  Sharing is all-or-nothing: when enabled, your entire vault becomes public. You cannot selectively share individual items.
+</Note>
+
+## Enable Sharing
+
+To create a share link for your brain:
+
+<CodeGroup>
+
+```javascript JavaScript
+const response = await fetch('http://localhost:8000/api/v1/brain/share', {
+  method: 'POST',
+  headers: {
+    'Content-Type': 'application/json',
+    'Authorization': `Bearer ${token}`
+  },
+  body: JSON.stringify({
+    share: true
+  })
+})
+
+const data = await response.json()
+console.log(data.shareLink) // "/api/v1/brain/a3f7b9c2e1d4"
+console.log(data.hash) // "a3f7b9c2e1d4"
+```
+
+```bash cURL
+curl -X POST http://localhost:8000/api/v1/brain/share \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN" \
+  -d '{"share": true}'
+```
+
+```python Python
+import requests
+
+response = requests.post(
+    'http://localhost:8000/api/v1/brain/share',
+    headers={
+        'Content-Type': 'application/json',
+        'Authorization': f'Bearer {token}'
+    },
+    json={'share': True}
+)
+
+data = response.json()
+print(f"Share your brain at: {data['shareLink']}")
+```
+
+</CodeGroup>
+
+### Response Format
+
+**First time enabling:**
+
+```json
+{
+  "message": "Share link created successfully",
+  "hash": "a3f7b9c2e1d4",
+  "shareLink": "/api/v1/brain/a3f7b9c2e1d4"
+}
+```
+
+**If already enabled:**
+
+```json
+{
+  "message": "Sharing is active",
+  "hash": "a3f7b9c2e1d4",
+  "shareLink": "/api/v1/brain/a3f7b9c2e1d4"
+}
+```
+
+<Tip>
+  Your share link remains the same even if you disable and re-enable sharing later.
+</Tip>
+
+## Disable Sharing
+
+To revoke public access to your brain:
+
+<CodeGroup>
+
+```javascript JavaScript
+const response = await fetch('http://localhost:8000/api/v1/brain/share', {
+  method: 'POST',
+  headers: {
+    'Content-Type': 'application/json',
+    'Authorization': `Bearer ${token}`
+  },
+  body: JSON.stringify({
+    share: false
+  })
+})
+
+const data = await response.json()
+console.log(data.message) // "Share link disabled successfully"
+```
+
+```bash cURL
+curl -X POST http://localhost:8000/api/v1/brain/share \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN" \
+  -d '{"share": false}'
+```
+
+</CodeGroup>
+
+<Note>
+  Disabling sharing permanently deletes your share link. Re-enabling will generate a new hash.
+</Note>
+
+## View a Shared Brain
+
+Anyone can view a shared brain without authentication:
+
+**Endpoint:** `GET /api/v1/brain/{shareLink}`
+
+<CodeGroup>
+
+```javascript JavaScript
+const response = await fetch('http://localhost:8000/api/v1/brain/a3f7b9c2e1d4')
+const data = await response.json()
+
+console.log(data.username) // Owner's username
+console.log(data.count) // Number of items
+console.log(data.content) // Array of content items
+```
+
+```bash cURL
+curl http://localhost:8000/api/v1/brain/a3f7b9c2e1d4
+```
+
+```python Python
+import requests
+
+response = requests.get('http://localhost:8000/api/v1/brain/a3f7b9c2e1d4')
+data = response.json()
+
+print(f"{data['username']}'s Brain - {data['count']} items")
+for item in data['content']:
+    print(f"- {item['title']} ({item['type']})")
+```
+
+</CodeGroup>
+
+### Response Format
+
+```json
+{
+  "message": "Shared brain content",
+  "username": "john_doe",
+  "count": 42,
+  "content": [
+    {
+      "id": 15,
+      "link": "https://example.com/article",
+      "type": "article",
+      "title": "Understanding RAG Systems",
+      "description": "Comprehensive guide to Retrieval-Augmented Generation",
+      "createdAt": "2026-03-01T10:30:00.000Z",
+      "tags": ["ai", "rag", "embeddings"]
+    }
+  ]
+}
+```
+
+<Note>
+  Content is returned in reverse chronological order (newest first), just like in the owner's dashboard.
+</Note>
+
+## Implementation Details
+
+### Hash Generation
+
+Share links use UUIDs truncated to 12 characters:
+
+```typescript
+// From src/controllers/content.controller.ts:239-245
+import { v4 as uuidv4 } from 'uuid'
+
+const hash = uuidv4()
+  .replace(/-/g, '') // Remove dashes from UUID
+  .slice(0, 12)      // Take first 12 characters
+
+await db.run(`INSERT INTO links (hash, userId) VALUES (?, ?)`, [hash, userId])
+```
+
+This provides ~3.5 × 10^21 possible combinations, making collisions virtually impossible.
+
+### Database Schema
+
+Sharing is managed by the `links` table:
+
+```sql
+CREATE TABLE links (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  hash TEXT UNIQUE NOT NULL,
+  userId INTEGER NOT NULL,
+  FOREIGN KEY (userId) REFERENCES users(id) ON DELETE CASCADE
+);
+```
+
+Each user can have at most one active share link (enforced by unique `userId`).
+
+### Security Considerations
+
+<CardGroup cols={2}>
+  <Card title="Public by Design" icon="eye" color="#3b82f6">
+    Share links are intentionally public. Anyone with the link can view your content.
+  </Card>
+  <Card title="No Enumeration" icon="shield" color="#10b981">
+    The 12-character hash space is large enough to prevent brute-force discovery.
+  </Card>
+  <Card title="Read-Only" icon="lock" color="#f59e0b">
+    Viewers cannot modify, delete, or add content. They have zero write permissions.
+  </Card>
+  <Card title="Revocable" icon="trash" color="#ef4444">
+    Disable sharing anytime to immediately revoke all access.
+  </Card>
+</CardGroup>
+
+## Frontend Integration
+
+MIND-f-LAYER's frontend includes a dedicated shared view component:
+
+```javascript
+// From frontend/src/components/SharedView.jsx
+import { useParams } from 'react-router-dom'
+import { getSharedBrain } from '../services/api.js'
+
+export default function SharedView() {
+  const { shareId } = useParams()
+  const [content, setContent] = useState([])
+  const [username, setUsername] = useState('')
+
+  useEffect(() => {
+    async function fetchShared() {
+      const result = await getSharedBrain(shareId)
+      if (result.ok) {
+        setContent(result.data.content)
+        setUsername(result.data.username)
+      }
+    }
+    fetchShared()
+  }, [shareId])
+
+  return (
+    <div className="shared-brain">
+      <h1>{username}'s Second Brain</h1>
+      {/* Render content items */}
+    </div>
+  )
+}
+```
+
+This component:
+- Extracts the share hash from the URL
+- Fetches content without authentication
+- Displays the owner's username
+- Shows all shared items in a read-only view
+
+## Use Cases
+
+### Personal Portfolio
+
+Share your curated collection of resources to showcase your expertise:
+
+```javascript
+// Enable sharing
+await brainShare(token, true)
+
+// Add to your portfolio website
+<a href="https://yourdomain.com/api/v1/brain/a3f7b9c2e1d4">
+  View My Research Library
+</a>
+```
+
+### Collaborative Research
+
+Share your knowledge base with team members or study groups:
+
+```javascript
+// Share in a team Slack/Discord
+const { shareLink } = await brainShare(token, true)
+console.log(`Check out my curated resources: https://mind-f-layer.com${shareLink}`)
+```
+
+### Knowledge Curation
+
+Build public collections on specific topics:
+
+```javascript
+// Create a focused vault
+const aiResources = [
+  { title: "RAG Architecture", type: "article", tags: ["rag", "ai"] },
+  { title: "Vector Databases", type: "video", tags: ["embeddings", "database"] },
+  { title: "Prompt Engineering", type: "document", tags: ["llm", "prompts"] }
+]
+
+for (const item of aiResources) {
+  await createContent(token, item)
+}
+
+await brainShare(token, true)
+```
+
+## Error Handling
+
+### Invalid Share Link
+
+If someone tries to access a non-existent or deleted share link:
+
+```json
+{
+  "error": "Share link not found or has been removed"
+}
+```
+
+**HTTP Status:** `404 Not Found`
+
+### Missing Share Link Parameter
+
+If the hash parameter is missing:
+
+```json
+{
+  "error": "Share link is required"
+}
+```
+
+**HTTP Status:** `400 Bad Request`
+
+## Best Practices
+
+<Steps>
+  <Step title="Curate Before Sharing">
+    Review your content before enabling sharing. Ensure:
+    - All titles and descriptions are professional
+    - Tags are consistent and meaningful
+    - Links are still valid
+    - Content represents what you want to share
+  </Step>
+
+  <Step title="Use Descriptive Titles">
+    Since your content is public, use clear, standalone titles that make sense without context:
+    
+    ✅ "RAG Implementation Guide with Gemini API"
+    
+    ❌ "That thing I need to remember"
+  </Step>
+
+  <Step title="Monitor Shared Content">
+    Regularly review what's being shared:
+    ```javascript
+    const { content } = await getContent(token)
+    console.log(`Sharing ${content.length} items publicly`)
+    ```
+  </Step>
+
+  <Step title="Disable When Not Needed">
+    If you're done sharing or need to make changes, disable sharing temporarily:
+    ```javascript
+    await brainShare(token, false) // Disable
+    // Make changes...
+    await brainShare(token, true)  // Re-enable (new hash)
+    ```
+  </Step>
+</Steps>
+
+<Warning>
+  Once you share your brain, assume the content is public forever. Even after disabling sharing, someone may have saved or cached your content.
+</Warning>
+
+## Sharing API Reference
+
+### POST /api/v1/brain/share
+
+**Authentication:** Required (Bearer token)
+
+**Request Body:**
+```typescript
+{
+  share: boolean // true to enable, false to disable
+}
+```
+
+**Responses:**
+
+| Status | Condition | Response |
+|--------|-----------|----------|
+| `201` | Share link created | `{ message, hash, shareLink }` |
+| `200` | Already sharing | `{ message, hash, shareLink }` |
+| `200` | Sharing disabled | `{ message }` |
+| `401` | Not authenticated | `{ error: "Unauthorized" }` |
+| `500` | Server error | `{ error: "Failed to manage share link" }` |
+
+### GET /api/v1/brain/:shareLink
+
+**Authentication:** Not required (public endpoint)
+
+**URL Parameters:**
+- `shareLink` - The 12-character hash from enabling sharing
+
+**Responses:**
+
+| Status | Condition | Response |
+|--------|-----------|----------|
+| `200` | Success | `{ message, username, count, content[] }` |
+| `400` | Missing parameter | `{ error: "Share link is required" }` |
+| `404` | Link not found | `{ error: "Share link not found or has been removed" }` |
+| `500` | Server error | `{ error: "Failed to fetch shared content" }` |
+
+## Next Steps
+
+Now that you understand sharing:
+
+- Learn how to [save content](/guides/saving-content) effectively for public viewing
+- Master [querying your brain](/guides/querying-brain) to verify content quality
+- Return to [setup](/guides/setup) for deployment considerations

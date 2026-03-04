@@ -1,0 +1,310 @@
+---
+title: 'System Architecture Overview'
+description: 'High-level architecture of the MIND-f-LAYER Second Brain application'
+icon: 'sitemap'
+---
+
+## Architecture Overview
+
+MIND-f-LAYER is a full-stack AI-powered Second Brain application built with a modern, modular architecture. The system consists of four primary layers:
+
+<CardGroup cols={2}>
+  <Card title="Frontend Layer" icon="browser" color="#3b82f6">
+    React 19 + Vite for fast, reactive user interface
+  </Card>
+  <Card title="Backend Layer" icon="server" color="#10b981">
+    Express.js + TypeScript for RESTful API services
+  </Card>
+  <Card title="Database Layer" icon="database" color="#f59e0b">
+    SQLite for persistent storage with relational data
+  </Card>
+  <Card title="AI Layer" icon="brain" color="#8b5cf6">
+    Google Gemini for embeddings and LLM generation
+  </Card>
+</CardGroup>
+
+## System Diagram
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                     Frontend (React + Vite)                 │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐      │
+│  │   Dashboard  │  │   Content    │  │  Brain Query │      │
+│  │     View     │  │  Management  │  │   Interface  │      │
+│  └──────────────┘  └──────────────┘  └──────────────┘      │
+└─────────────────────┬───────────────────────────────────────┘
+                      │ HTTP/REST API (Port 8000)
+                      ▼
+┌─────────────────────────────────────────────────────────────┐
+│              Backend (Express + TypeScript)                 │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐      │
+│  │     Auth     │  │   Content    │  │    Brain     │      │
+│  │  Controller  │  │  Controller  │  │  Controller  │      │
+│  └──────────────┘  └──────────────┘  └──────────────┘      │
+│         │                  │                  │             │
+│         └──────────────────┴──────────────────┘             │
+│                            │                                │
+│                            ▼                                │
+│  ┌─────────────────────────────────────────────────────┐   │
+│  │            AI Service (ai.service.ts)              │   │
+│  │  • generateEmbedding()                             │   │
+│  │  • generateQueryEmbedding()                        │   │
+│  │  • queryBrain() (RAG)                              │   │
+│  │  • cosineSimilarity()                              │   │
+│  └─────────────────────────────────────────────────────┘   │
+└─────────────────────┬───────────────┬───────────────────────┘
+                      │               │
+                      │               │ Google Gemini API
+                      ▼               ▼
+          ┌───────────────────┐  ┌──────────────────────┐
+          │  SQLite Database  │  │   Google Gemini AI   │
+          │  (database.db)    │  │  • gemini-2.5-flash  │
+          │                   │  │  • gemini-embed-001  │
+          │  • users          │  └──────────────────────┘
+          │  • content        │
+          │  • tags           │
+          │  • embeddings     │
+          │  • content_tags   │
+          └───────────────────┘
+```
+
+## Frontend Layer
+
+### Technology Stack
+
+- **React 19.2.0**: Latest version with improved performance and concurrent features
+- **Vite 7.3.1**: Lightning-fast build tool and dev server
+- **React Router 7.13.1**: Client-side routing for SPA navigation
+- **Build Output**: Static files served by Express
+
+### Development Workflow
+
+The frontend runs independently during development:
+
+```bash
+# Development server (Port 5173)
+cd frontend && npm run dev
+
+# Production build
+npm run build  # outputs to frontend/dist/
+```
+
+<Note>
+  In production, Express serves the built React app as static files from `frontend/dist/`, while the dev server runs on port 5173.
+</Note>
+
+## Backend Layer
+
+### Core Server Configuration
+
+The backend is built on Express.js with TypeScript, providing a robust REST API:
+
+```typescript src/index.ts
+import express from 'express'
+import cors from 'cors'
+import { initDB } from './database/db.ts'
+import apiRouter from './routes/index.ts'
+
+const PORT: number = 8000
+const app = express()
+
+// CORS - allow frontend dev server
+app.use(cors({
+    origin: ['http://localhost:5173', 'http://localhost:5174', 
+             'http://localhost:3000', 'http://localhost:8000'],
+    credentials: true,
+}))
+
+app.use(express.json())
+
+// Use versioned API routes
+app.use('/api/v1', apiRouter)
+
+// Initialize database and start server
+await initDB()
+app.listen(PORT, () => {
+    console.log("Server running on port", PORT)
+})
+```
+
+### API Architecture
+
+The API follows RESTful principles with versioned endpoints:
+
+| Endpoint | Purpose |
+|----------|----------|
+| `/api/v1/auth/*` | User authentication (signup, signin) |
+| `/api/v1/content/*` | Content CRUD operations |
+| `/api/v1/brain/*` | AI-powered query and semantic search |
+
+### Middleware Stack
+
+1. **CORS Middleware**: Enables cross-origin requests from frontend
+2. **JSON Parser**: Parses incoming request bodies
+3. **Auth Middleware**: JWT-based authentication for protected routes
+4. **Error Handler**: Global error handling middleware
+
+## Database Layer
+
+SQLite is used as the primary database, chosen for its simplicity and suitability for personal use:
+
+```typescript src/database/db.ts
+import sqlite3 from 'sqlite3'
+import { open, Database } from 'sqlite'
+
+export async function initDB() {
+  db = await open({
+    filename: './database.db',
+    driver: sqlite3.Database
+  })
+  
+  // Enable foreign keys for referential integrity
+  await db.exec(`PRAGMA foreign_keys = ON;`)
+}
+```
+
+<Info>
+  See the [Database Schema](/architecture/database) page for detailed table structures and relationships.
+</Info>
+
+## AI Layer
+
+The AI layer integrates Google's Gemini models for two primary functions:
+
+### 1. Embedding Generation (gemini-embedding-001)
+
+- **Purpose**: Convert content into 768-dimensional vectors
+- **Use Case**: Semantic search and similarity matching
+- **Model**: `gemini-embedding-001` with 768 dimensions
+
+### 2. Text Generation (gemini-2.5-flash-lite)
+
+- **Purpose**: Generate natural language responses
+- **Use Case**: RAG (Retrieval-Augmented Generation) for brain queries
+- **Model**: `gemini-2.5-flash-lite` for fast inference
+
+```typescript src/configs/config.ts
+export const GENERATION_MODEL = "gemini-2.5-flash-lite"
+export const EMBEDDING_MODEL = "gemini-embedding-001"
+export const EMBEDDING_DIMENSIONS = 768
+```
+
+### Retry Mechanism
+
+The AI service includes exponential backoff retry logic for API resilience:
+
+```typescript src/services/ai.service.ts
+async function withRetry<T>(
+    fn: () => Promise<T>,
+    maxRetries = 3,
+    baseDelayMs = 1000
+): Promise<T> {
+    for (let attempt = 0; attempt < maxRetries; attempt++) {
+        try {
+            return await fn()
+        } catch (err: any) {
+            // Retry on 429 (rate limit) or 503 (service unavailable)
+            if (err?.status === 429 || err?.status === 503) {
+                const delay = baseDelayMs * Math.pow(2, attempt)
+                console.warn(`Retrying in ${delay}ms...`)
+                await new Promise((resolve) => setTimeout(resolve, delay))
+                continue
+            }
+            throw err
+        }
+    }
+}
+```
+
+<Warning>
+  The AI service requires a valid `GEMINI_API_KEY` environment variable. Get a free API key at [Google AI Studio](https://aistudio.google.com).
+</Warning>
+
+## Data Flow
+
+### Content Creation Flow
+
+1. User submits content via React frontend
+2. Frontend sends POST request to `/api/v1/content`
+3. Backend validates data with Zod schema
+4. Content saved to SQLite database
+5. AI service generates embedding from title + description + tags
+6. Embedding stored as JSON string in `embeddings` table
+7. Success response returned to frontend
+
+### Brain Query Flow (RAG)
+
+1. User enters query in Brain interface
+2. Frontend sends POST to `/api/v1/brain/query`
+3. Backend generates query embedding
+4. Cosine similarity computed against all user's content embeddings
+5. Top K most similar items retrieved (default K=5)
+6. Context built from relevant content
+7. Gemini generates answer using RAG approach
+8. Response with answer + relevant sources returned
+
+<Info>
+  See the [RAG Pipeline](/architecture/rag-pipeline) page for a detailed breakdown of the retrieval-augmented generation process.
+</Info>
+
+## Key Design Decisions
+
+### Why SQLite?
+
+- **Simplicity**: No separate database server required
+- **Portability**: Single file database (`database.db`)
+- **Sufficient Performance**: Ideal for personal knowledge management
+- **ACID Compliance**: Full transactional support
+- **Zero Configuration**: Works out of the box
+
+### Why Gemini?
+
+- **Free Tier**: Generous free API quota
+- **Fast Inference**: gemini-2.5-flash-lite optimized for speed
+- **Quality Embeddings**: 768-dimensional embeddings for semantic search
+- **Multimodal Capable**: Future support for images, audio
+
+### Why TypeScript?
+
+- **Type Safety**: Catch errors at compile time
+- **Better IDE Support**: Autocomplete and IntelliSense
+- **Self-Documenting**: Types serve as inline documentation
+- **Zod Integration**: Runtime validation with type inference
+
+## Performance Considerations
+
+<Accordion title="Database Query Optimization">
+  - Indexed foreign keys for fast joins
+  - Batch tag operations to reduce round trips
+  - Cascade deletes for automatic cleanup
+</Accordion>
+
+<Accordion title="Embedding Search Optimization">
+  - In-memory cosine similarity (no vector DB needed for small datasets)
+  - Pre-filter by userId before computing similarity
+  - Configurable topK to limit results
+</Accordion>
+
+<Accordion title="API Response Times">
+  - Average embedding generation: ~200-500ms
+  - Average LLM response: ~1-3s
+  - Database queries: under 10ms
+  - Total query time: ~1.5-3.5s
+</Accordion>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="RAG Pipeline" icon="diagram-project" href="/architecture/rag-pipeline">
+    Dive deep into the retrieval-augmented generation workflow
+  </Card>
+  <Card title="Vector Embeddings" icon="wave-square" href="/architecture/vector-embeddings">
+    Learn how embeddings enable semantic search
+  </Card>
+  <Card title="Database Schema" icon="table" href="/architecture/database">
+    Explore the SQLite schema and relationships
+  </Card>
+  <Card title="API Reference" icon="code" href="/api/auth/signup">
+    Explore the complete API documentation
+  </Card>
+</CardGroup>

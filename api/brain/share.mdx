@@ -1,0 +1,311 @@
+---
+title: 'Share Brain'
+description: 'Enable public sharing of your brain content and view shared brains'
+---
+
+MIND-f-LAYER allows you to share your entire second brain publicly via a unique shareable link. This feature includes endpoints to toggle sharing on/off and to view publicly shared content.
+
+## Toggle Sharing
+
+<api method="POST" url="/api/v1/brain/share" auth="required">
+  Enable or disable public sharing of your brain content.
+</api>
+
+### Authentication
+
+This endpoint requires authentication. Include a valid JWT token in the Authorization header.
+
+### Request Body
+
+<ParamField body="share" type="boolean" required>
+  Set to `true` to enable sharing (creates a new link if none exists), or `false` to disable sharing (removes the share link).
+  
+  Also accepts string values `"false"` for disabling.
+</ParamField>
+
+### Response - Enable Sharing (New Link)
+
+<ResponseField name="message" type="string">
+  Status message: `"Share link created successfully"`
+</ResponseField>
+
+<ResponseField name="hash" type="string">
+  The unique 12-character hash identifier for the share link.
+</ResponseField>
+
+<ResponseField name="shareLink" type="string">
+  The relative path to access the shared brain: `/api/v1/brain/{hash}`
+</ResponseField>
+
+### Response - Sharing Already Active
+
+<ResponseField name="message" type="string">
+  Status message: `"Sharing is active"`
+</ResponseField>
+
+<ResponseField name="hash" type="string">
+  The existing share link hash.
+</ResponseField>
+
+<ResponseField name="shareLink" type="string">
+  The relative path to the existing shared brain.
+</ResponseField>
+
+### Response - Disable Sharing
+
+<ResponseField name="message" type="string">
+  Status message: `"Share link disabled successfully"`
+</ResponseField>
+
+### Example: Enable Sharing
+
+```bash
+curl -X POST https://api.example.com/api/v1/brain/share \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "share": true
+  }'
+```
+
+**Response (201 Created):**
+
+```json
+{
+  "message": "Share link created successfully",
+  "hash": "a3f8d9e2b1c4",
+  "shareLink": "/api/v1/brain/a3f8d9e2b1c4"
+}
+```
+
+### Example: Check Existing Share Link
+
+```bash
+curl -X POST https://api.example.com/api/v1/brain/share \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "share": true
+  }'
+```
+
+**Response (200 OK):**
+
+```json
+{
+  "message": "Sharing is active",
+  "hash": "a3f8d9e2b1c4",
+  "shareLink": "/api/v1/brain/a3f8d9e2b1c4"
+}
+```
+
+### Example: Disable Sharing
+
+```bash
+curl -X POST https://api.example.com/api/v1/brain/share \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "share": false
+  }'
+```
+
+**Response (200 OK):**
+
+```json
+{
+  "message": "Share link disabled successfully"
+}
+```
+
+---
+
+## View Shared Brain
+
+<api method="GET" url="/api/v1/brain/:shareLink" auth="none">
+  Publicly access someone's shared brain content. No authentication required.
+</api>
+
+### Path Parameters
+
+<ParamField path="shareLink" type="string" required>
+  The unique hash identifier for the shared brain (e.g., `a3f8d9e2b1c4`).
+</ParamField>
+
+### Response
+
+<ResponseField name="message" type="string">
+  Status message: `"Shared brain content"`
+</ResponseField>
+
+<ResponseField name="username" type="string">
+  The username of the person who shared this brain.
+</ResponseField>
+
+<ResponseField name="count" type="number">
+  Total number of content items in the shared brain.
+</ResponseField>
+
+<ResponseField name="content" type="array">
+  Array of all content items from the shared brain, sorted by creation date (newest first).
+  
+  <Expandable title="Content Item Object">
+    <ResponseField name="id" type="number">
+      Unique identifier for the content item.
+    </ResponseField>
+    
+    <ResponseField name="link" type="string">
+      URL of the original content.
+    </ResponseField>
+    
+    <ResponseField name="type" type="string">
+      Content type: `article`, `video`, `tweet`, `document`, `audio`, `image`, or `other`.
+    </ResponseField>
+    
+    <ResponseField name="title" type="string">
+      Title of the content.
+    </ResponseField>
+    
+    <ResponseField name="description" type="string">
+      Content description (may be empty string).
+    </ResponseField>
+    
+    <ResponseField name="createdAt" type="string">
+      ISO 8601 timestamp when the content was saved.
+    </ResponseField>
+    
+    <ResponseField name="tags" type="array">
+      Array of tag strings associated with this content.
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+### Example Request
+
+```bash
+curl -X GET https://api.example.com/api/v1/brain/a3f8d9e2b1c4
+```
+
+### Example Response
+
+**Success (200 OK):**
+
+```json
+{
+  "message": "Shared brain content",
+  "username": "alice_dev",
+  "count": 3,
+  "content": [
+    {
+      "id": 42,
+      "link": "https://example.com/react-hooks",
+      "type": "article",
+      "title": "Advanced React Hooks Patterns",
+      "description": "Deep dive into custom hooks and composition patterns",
+      "createdAt": "2026-03-04T10:30:00.000Z",
+      "tags": ["react", "hooks", "frontend"]
+    },
+    {
+      "id": 38,
+      "link": "https://example.com/typescript-tips",
+      "type": "video",
+      "title": "TypeScript Advanced Types",
+      "description": "Conference talk on conditional types and mapped types",
+      "createdAt": "2026-03-03T15:20:00.000Z",
+      "tags": ["typescript", "types"]
+    },
+    {
+      "id": 29,
+      "link": "https://example.com/web-performance",
+      "type": "article",
+      "title": "Web Performance Optimization in 2026",
+      "description": "",
+      "createdAt": "2026-03-01T08:45:00.000Z",
+      "tags": ["performance", "web", "optimization"]
+    }
+  ]
+}
+```
+
+## Error Responses
+
+### Toggle Sharing Endpoint
+
+<ResponseField name="401 Unauthorized">
+  ```json
+  {
+    "error": "Unauthorized"
+  }
+  ```
+  Missing or invalid authentication token.
+</ResponseField>
+
+<ResponseField name="500 Internal Server Error">
+  ```json
+  {
+    "error": "Failed to manage share link"
+  }
+  ```
+  An unexpected error occurred while managing the share link.
+</ResponseField>
+
+### View Shared Brain Endpoint
+
+<ResponseField name="400 Bad Request">
+  ```json
+  {
+    "error": "Share link is required"
+  }
+  ```
+  The share link parameter was not provided in the URL.
+</ResponseField>
+
+<ResponseField name="404 Not Found">
+  ```json
+  {
+    "error": "Share link not found or has been removed"
+  }
+  ```
+  The provided share link does not exist or has been disabled by the owner.
+</ResponseField>
+
+<ResponseField name="500 Internal Server Error">
+  ```json
+  {
+    "error": "Failed to fetch shared content"
+  }
+  ```
+  An unexpected error occurred while retrieving the shared content.
+</ResponseField>
+
+## Implementation Details
+
+### Share Link Generation
+
+- Share links use UUID v4 with hyphens removed and truncated to 12 characters
+- Each user can only have one active share link at a time
+- Enabling sharing when a link already exists returns the existing link (idempotent)
+- Share links are stored in the `links` table with `hash` and `userId` columns
+
+### Security Considerations
+
+<Note>
+  **Public Access**: Shared brains are completely public and require no authentication. Anyone with the share link can view all your saved content, including titles, links, descriptions, and tags. Only share your brain if you're comfortable with this level of visibility.
+</Note>
+
+- Shared content is read-only - viewers cannot modify or delete content
+- The owner's user ID is not exposed in the public response
+- Disabling sharing immediately makes the content inaccessible via the previous link
+- No analytics or tracking of who views shared brains
+
+## Use Cases
+
+- **Portfolio**: Share your curated learning resources with potential employers
+- **Research Sharing**: Make your research collection publicly accessible
+- **Teaching**: Share educational content with students or mentees
+- **Community**: Build a public knowledge base in your area of expertise
+
+## See Also
+
+- [Query](/api/brain/query) - Ask questions against your brain content
+- [Search](/api/brain/search) - Perform semantic search across your content

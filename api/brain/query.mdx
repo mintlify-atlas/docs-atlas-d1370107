@@ -1,0 +1,202 @@
+---
+title: 'Query Brain'
+api: 'POST /api/v1/brain/query'
+description: 'Ask questions against your saved content using RAG (Retrieval-Augmented Generation)'
+---
+
+Perform intelligent question-answering over your second brain content. This endpoint combines semantic search with Gemini AI to provide contextual answers based on your saved knowledge.
+
+<Note>
+  **RAG vs Search**: The `/query` endpoint uses Retrieval-Augmented Generation (RAG) to provide AI-generated answers based on relevant content. Use `/search` if you only need similarity rankings without an LLM-generated answer.
+</Note>
+
+## Authentication
+
+This endpoint requires authentication. Include a valid JWT token in the Authorization header.
+
+## Request Body
+
+<ParamField body="query" type="string" required>
+  The question to ask against your saved content.
+  
+  - Minimum length: 1 character
+  - Maximum length: 500 characters
+  - Cannot be empty
+</ParamField>
+
+<ParamField body="topK" type="number" default={5}>
+  Number of most relevant content items to retrieve for context.
+  
+  - Must be an integer
+  - Minimum: 1
+  - Maximum: 20
+  - Default: 5
+</ParamField>
+
+## Response
+
+<ResponseField name="message" type="string">
+  Status message describing the query result.
+</ResponseField>
+
+<ResponseField name="answer" type="string">
+  AI-generated answer from Gemini based on your relevant content. Returns `null` if your vault is empty.
+</ResponseField>
+
+<ResponseField name="relevantContent" type="array">
+  Array of content items used to generate the answer, sorted by relevance score (highest first).
+  
+  <Expandable title="Content Item Object">
+    <ResponseField name="id" type="number">
+      Unique identifier for the content item.
+    </ResponseField>
+    
+    <ResponseField name="title" type="string">
+      Title of the content.
+    </ResponseField>
+    
+    <ResponseField name="link" type="string">
+      URL of the original content.
+    </ResponseField>
+    
+    <ResponseField name="type" type="string">
+      Content type: `article`, `video`, `tweet`, `document`, `audio`, `image`, or `other`.
+    </ResponseField>
+    
+    <ResponseField name="score" type="number">
+      Similarity score as a percentage (0-100). Higher scores indicate greater relevance.
+      
+      Content with scores below 30 is automatically filtered out.
+    </ResponseField>
+    
+    <ResponseField name="tags" type="array">
+      Array of tag strings associated with this content.
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+## How It Works
+
+1. **Embedding Generation**: Your query is converted to a vector embedding using the same model that embedded your saved content
+2. **Similarity Search**: Cosine similarity is calculated between your query and all stored content embeddings
+3. **Relevance Filtering**: Only content with similarity scores > 0.3 (30%) is considered
+4. **RAG Answer**: Top relevant content is sent to Gemini AI along with your question to generate a contextual answer
+
+## Example Request
+
+```bash
+curl -X POST https://api.example.com/api/v1/brain/query \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "query": "What are the best practices for React performance optimization?",
+    "topK": 5
+  }'
+```
+
+## Example Response
+
+### Success with Results
+
+```json
+{
+  "message": "Query completed",
+  "answer": "Based on your saved content, here are the key React performance optimization techniques: 1) Use React.memo() to prevent unnecessary re-renders of components. 2) Implement code splitting with React.lazy() and Suspense to reduce initial bundle size. 3) Optimize expensive calculations with useMemo and useCallback hooks. 4) Use virtualization for long lists with libraries like react-window. Your articles emphasize that premature optimization should be avoided - always profile first.",
+  "relevantContent": [
+    {
+      "id": 42,
+      "title": "React Performance Optimization Guide",
+      "link": "https://example.com/react-perf",
+      "type": "article",
+      "score": 87.3,
+      "tags": ["react", "performance", "frontend"]
+    },
+    {
+      "id": 128,
+      "title": "Optimizing React Applications at Scale",
+      "link": "https://example.com/react-scale",
+      "type": "video",
+      "score": 76.2,
+      "tags": ["react", "optimization"]
+    },
+    {
+      "id": 91,
+      "title": "useMemo vs useCallback: When to Use What",
+      "link": "https://example.com/hooks-guide",
+      "type": "article",
+      "score": 68.5,
+      "tags": ["react", "hooks", "performance"]
+    }
+  ]
+}
+```
+
+### Empty Vault
+
+```json
+{
+  "message": "Your vault is empty! Start saving content to query it.",
+  "answer": null,
+  "relevantContent": []
+}
+```
+
+### No Relevant Content
+
+```json
+{
+  "message": "No content in your second brain seems related to this query.",
+  "answer": "I couldn't find any saved content that's relevant to your question. Try saving more content or rephrasing your query.",
+  "relevantContent": []
+}
+```
+
+## Error Responses
+
+<ResponseField name="401 Unauthorized">
+  ```json
+  {
+    "error": "Unauthorized"
+  }
+  ```
+  Missing or invalid authentication token.
+</ResponseField>
+
+<ResponseField name="400 Bad Request">
+  ```json
+  {
+    "error": "Validation failed",
+    "details": [
+      {
+        "path": ["query"],
+        "message": "Query cannot be empty"
+      }
+    ]
+  }
+  ```
+  Request validation failed. Check the `details` array for specific issues.
+</ResponseField>
+
+<ResponseField name="503 Service Unavailable">
+  ```json
+  {
+    "error": "AI service unavailable",
+    "message": "GEMINI_API_KEY is not configured"
+  }
+  ```
+  The Gemini AI service is not available. This typically means the API key is missing or invalid.
+</ResponseField>
+
+<ResponseField name="500 Internal Server Error">
+  ```json
+  {
+    "error": "Failed to query brain"
+  }
+  ```
+  An unexpected error occurred while processing the query.
+</ResponseField>
+
+## See Also
+
+- [Search](/api/brain/search) - Semantic search without AI-generated answers
+- [Share](/api/brain/share) - Share your brain with others

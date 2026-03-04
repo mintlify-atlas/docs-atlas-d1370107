@@ -1,80 +1,453 @@
 ---
-title: "Quickstart"
-description: "Start building awesome documentation in minutes"
+title: Quickstart Guide
+description: Get started with MIND-f-LAYER in 5 minutes - create an account, save content, and query your AI-powered Second Brain
 ---
 
-## Get started in three steps
+# Quickstart Guide
 
-Get your documentation site running locally and make your first customization.
-
-### Step 1: Set up your local environment
-
-<AccordionGroup>
-  <Accordion icon="copy" title="Clone your docs locally">
-    During the onboarding process, you created a GitHub repository with your docs content if you didn't already have one. You can find a link to this repository in your [dashboard](https://dashboard.mintlify.com).
-    
-    To clone the repository locally so that you can make and preview changes to your docs, follow the [Cloning a repository](https://docs.github.com/en/repositories/creating-and-managing-repositories/cloning-a-repository) guide in the GitHub docs.
-  </Accordion>
-  <Accordion icon="rectangle-terminal" title="Start the preview server">
-    1. Install the Mintlify CLI: `npm i -g mint`
-    2. Navigate to your docs directory and run: `mint dev`
-    3. Open `http://localhost:3000` to see your docs live!
-    
-    <Tip>Your preview updates automatically as you edit files.</Tip>
-  </Accordion>
-</AccordionGroup>
-
-### Step 2: Deploy your changes
-
-<AccordionGroup>
-  <Accordion icon="github" title="Install our GitHub app">
-    Install the Mintlify GitHub app from your [dashboard](https://dashboard.mintlify.com/settings/organization/github-app).
-    
-    Our GitHub app automatically deploys your changes to your docs site, so you don't need to manage deployments yourself.
-</Accordion>
-<Accordion icon="palette" title="Update your site name and colors">
-    For a first change, let's update the name and colors of your docs site.
-
-    1. Open `docs.json` in your editor.
-    2. Change the `"name"` field to your project name.
-    3. Update the `"colors"` to match your brand.
-    4. Save and see your changes instantly at `http://localhost:3000`.
-
-    <Tip>Try changing the primary color to see an immediate difference!</Tip>
-  </Accordion>
-</AccordionGroup>
-
-### Step 3: Go live
-
-<Accordion icon="rocket" title="Publish your docs">
-  1. Commit and push your changes.
-  2. Your docs will update and be live in moments!
-</Accordion>
-
-## Next steps
-
-Now that you have your docs running, explore these key features:
-
-<CardGroup cols={2}>
-
-<Card title="Write Content" icon="pen-to-square" href="/essentials/markdown">
-  Learn MDX syntax and start writing your documentation.
-</Card>
-
-<Card title="Customize style" icon="palette" href="/essentials/settings">
-  Make your docs match your brand perfectly.
-</Card>
-
-<Card title="Add code examples" icon="square-code" href="/essentials/code">
-  Include syntax-highlighted code blocks.
-</Card>
-
-<Card title="API documentation" icon="code" href="/api-reference/introduction">
-  Auto-generate API docs from OpenAPI specs.
-</Card>
-
-</CardGroup>
+This guide will walk you through using MIND-f-LAYER for the first time. You'll create an account, save some content, and query your brain using AI.
 
 <Note>
-  **Need help?** See our [full documentation](https://mintlify.com/docs) or join our [community](https://mintlify.com/community).
+  This quickstart assumes you already have MIND-f-LAYER installed and running. If not, see the [Installation Guide](/installation) first.
 </Note>
+
+## Prerequisites
+
+- MIND-f-LAYER server running on `http://localhost:8000`
+- A Gemini API key configured (for AI features)
+- curl or any HTTP client (Postman, Insomnia, etc.)
+
+## Step 1: Create Your Account
+
+<Steps>
+  <Step title="Sign up with username and password">
+    Create a new account using the signup endpoint:
+    
+    ```bash
+    curl -X POST http://localhost:8000/api/v1/auth/signup \
+      -H "Content-Type: application/json" \
+      -d '{
+        "username": "myusername",
+        "password": "mypassword123"
+      }'
+    ```
+    
+    **Response:**
+    ```json
+    {
+      "message": "Account created successfully",
+      "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+      "userId": 1
+    }
+    ```
+    
+    <Note>
+      Username must be at least 3 characters, password at least 6 characters. The JWT token expires in 7 days.
+    </Note>
+  </Step>
+  
+  <Step title="Save your authentication token">
+    Copy the `token` from the response. You'll need it for all authenticated requests.
+    
+    ```bash
+    export TOKEN="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+    ```
+  </Step>
+</Steps>
+
+### Already have an account?
+
+Sign in to get a fresh token:
+
+```bash
+curl -X POST http://localhost:8000/api/v1/auth/signin \
+  -H "Content-Type: application/json" \
+  -d '{
+    "username": "myusername",
+    "password": "mypassword123"
+  }'
+```
+
+## Step 2: Save Your First Content
+
+Now let's add some knowledge to your Second Brain.
+
+<CodeGroup>
+```bash Save an Article
+curl -X POST http://localhost:8000/api/v1/content \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $TOKEN" \
+  -d '{
+    "link": "https://react.dev/learn/state-a-components-memory",
+    "type": "article",
+    "title": "State: A Component Memory",
+    "description": "Learn how React components use state to remember information and re-render when state changes.",
+    "tags": ["react", "hooks", "state"]
+  }'
+```
+
+```bash Save a Video
+curl -X POST http://localhost:8000/api/v1/content \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $TOKEN" \
+  -d '{
+    "link": "https://www.youtube.com/watch?v=TNhaISOUy6Q",
+    "type": "video",
+    "title": "React useEffect Tutorial",
+    "description": "Complete guide to understanding and using the useEffect hook in React applications.",
+    "tags": ["react", "hooks", "tutorial"]
+  }'
+```
+
+```bash Save a Tweet
+curl -X POST http://localhost:8000/api/v1/content \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $TOKEN" \
+  -d '{
+    "link": "https://twitter.com/dan_abramov/status/1234567890",
+    "type": "tweet",
+    "title": "Dan Abramov on React Server Components",
+    "description": "Insightful thread explaining the benefits of React Server Components for data fetching.",
+    "tags": ["react", "rsc", "performance"]
+  }'
+```
+</CodeGroup>
+
+**Response:**
+```json
+{
+  "message": "Content created successfully",
+  "content": {
+    "id": 1,
+    "link": "https://react.dev/learn/state-a-components-memory",
+    "type": "article",
+    "title": "State: A Component Memory",
+    "description": "Learn how React components use state...",
+    "tags": ["react", "hooks", "state"],
+    "userId": 1
+  }
+}
+```
+
+<Warning>
+  When you save content, MIND-f-LAYER automatically generates a **768-dimension vector embedding** for semantic search. This happens in the background using the Gemini API.
+</Warning>
+
+### Supported Content Types
+
+You can save these content types:
+- `article` - Blog posts, documentation
+- `video` - YouTube, tutorials, courses
+- `tweet` - Social media posts
+- `document` - PDFs, papers, notes
+- `audio` - Podcasts, audiobooks
+- `image` - Infographics, diagrams
+- `other` - Anything else
+
+## Step 3: View Your Saved Content
+
+Retrieve all your saved content:
+
+```bash
+curl -X GET http://localhost:8000/api/v1/content \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+**Response:**
+```json
+{
+  "message": "Content fetched successfully",
+  "count": 3,
+  "content": [
+    {
+      "id": 1,
+      "link": "https://react.dev/learn/state-a-components-memory",
+      "type": "article",
+      "title": "State: A Component Memory",
+      "description": "Learn how React components use state...",
+      "createdAt": "2026-03-04T10:30:00.000Z",
+      "tags": ["react", "hooks", "state"]
+    }
+    // ... more items
+  ]
+}
+```
+
+### Filter by Type or Tag
+
+<CodeGroup>
+```bash Filter by Type
+curl -X GET "http://localhost:8000/api/v1/content?type=article" \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+```bash Filter by Tag
+curl -X GET "http://localhost:8000/api/v1/content?tag=react" \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+```bash Combine Filters
+curl -X GET "http://localhost:8000/api/v1/content?type=video&tag=tutorial" \
+  -H "Authorization: Bearer $TOKEN"
+```
+</CodeGroup>
+
+## Step 4: Query Your Brain with AI
+
+Now comes the magic - ask questions and get AI-powered answers based on your saved content!
+
+### RAG-Powered Query
+
+Ask a natural language question:
+
+```bash
+curl -X POST http://localhost:8000/api/v1/brain/query \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $TOKEN" \
+  -d '{
+    "query": "How does state work in React?",
+    "topK": 5
+  }'
+```
+
+**Response:**
+```json
+{
+  "message": "Query completed",
+  "answer": "Based on your saved content, React state is a component's memory. According to the article 'State: A Component Memory', components use state to remember information between renders. When state changes, React automatically re-renders the component to reflect the new data. The useEffect hook, covered in your saved tutorial, helps manage side effects when state changes.",
+  "relevantContent": [
+    {
+      "id": 1,
+      "title": "State: A Component Memory",
+      "link": "https://react.dev/learn/state-a-components-memory",
+      "type": "article",
+      "score": 87.3,
+      "tags": ["react", "hooks", "state"]
+    },
+    {
+      "id": 2,
+      "title": "React useEffect Tutorial",
+      "link": "https://www.youtube.com/watch?v=TNhaISOUy6Q",
+      "type": "video",
+      "score": 72.1,
+      "tags": ["react", "hooks", "tutorial"]
+    }
+  ]
+}
+```
+
+<Note>
+  The `score` represents semantic similarity percentage (0-100). Only content with similarity > 30% is used for generating answers.
+</Note>
+
+### How RAG Works Under the Hood
+
+<Accordion title="View the RAG Pipeline (src/controllers/brain.controller.ts:19)">
+  ```typescript
+  // 1. Generate embedding for the user's query
+  const queryEmbedding = await generateQueryEmbedding(userQuery)
+  
+  // 2. Compute cosine similarity against all stored embeddings
+  const scored = rows
+    .map((row) => {
+      const storedEmbedding = JSON.parse(row.embedding)
+      const score = cosineSimilarity(queryEmbedding, storedEmbedding)
+      return { ...row, score }
+    })
+    .sort((a, b) => b.score - a.score)
+    .slice(0, topK)
+  
+  // 3. Filter to only relevant results (similarity > 0.3)
+  const relevant = scored.filter((item) => item.score > 0.3)
+  
+  // 4. Send to Gemini with context from relevant content
+  const answer = await queryBrain(userQuery, relevant)
+  ```
+</Accordion>
+
+### Semantic Search (Without LLM)
+
+If you just want to find similar content without generating an answer:
+
+```bash
+curl -X POST http://localhost:8000/api/v1/brain/search \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $TOKEN" \
+  -d '{
+    "query": "hooks",
+    "topK": 3
+  }'
+```
+
+**Response:**
+```json
+{
+  "message": "Search completed",
+  "results": [
+    {
+      "id": 1,
+      "title": "State: A Component Memory",
+      "link": "https://react.dev/learn/state-a-components-memory",
+      "type": "article",
+      "description": "Learn how React components use state...",
+      "score": 85.2,
+      "tags": ["react", "hooks", "state"]
+    }
+    // ... more results
+  ]
+}
+```
+
+## Step 5: Share Your Brain (Optional)
+
+Generate a public share link to let others view your content:
+
+```bash
+curl -X POST http://localhost:8000/api/v1/brain/share \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $TOKEN" \
+  -d '{"share": true}'
+```
+
+**Response:**
+```json
+{
+  "message": "Share link created successfully",
+  "hash": "a1b2c3d4e5f6",
+  "shareLink": "/api/v1/brain/a1b2c3d4e5f6"
+}
+```
+
+Anyone can access your shared brain (no auth required):
+
+```bash
+curl http://localhost:8000/api/v1/brain/a1b2c3d4e5f6
+```
+
+### Disable Sharing
+
+```bash
+curl -X POST http://localhost:8000/api/v1/brain/share \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $TOKEN" \
+  -d '{"share": false}'
+```
+
+## Step 6: Delete Content
+
+Remove content you no longer need:
+
+```bash
+curl -X DELETE http://localhost:8000/api/v1/content \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $TOKEN" \
+  -d '{"contentId": 1}'
+```
+
+<Warning>
+  Deleting content also removes its embeddings due to SQLite `ON DELETE CASCADE` foreign key constraints.
+</Warning>
+
+## Complete Example Flow
+
+Here's a complete example using all the features:
+
+```bash
+# 1. Sign up
+TOKEN=$(curl -s -X POST http://localhost:8000/api/v1/auth/signup \
+  -H "Content-Type: application/json" \
+  -d '{"username":"demo","password":"demo123"}' \
+  | jq -r '.token')
+
+# 2. Save multiple content items
+curl -X POST http://localhost:8000/api/v1/content \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $TOKEN" \
+  -d '{
+    "link": "https://react.dev/reference/react/useState",
+    "type": "article",
+    "title": "useState Hook Reference",
+    "description": "Official React documentation for the useState hook",
+    "tags": ["react", "hooks", "api"]
+  }'
+
+curl -X POST http://localhost:8000/api/v1/content \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $TOKEN" \
+  -d '{
+    "link": "https://react.dev/reference/react/useEffect",
+    "type": "article",
+    "title": "useEffect Hook Reference",
+    "description": "Official React documentation for the useEffect hook",
+    "tags": ["react", "hooks", "api"]
+  }'
+
+# 3. Query your brain
+curl -X POST http://localhost:8000/api/v1/brain/query \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $TOKEN" \
+  -d '{"query":"What is the difference between useState and useEffect?"}'
+
+# 4. Create a share link
+curl -X POST http://localhost:8000/api/v1/brain/share \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $TOKEN" \
+  -d '{"share": true}'
+```
+
+## Error Handling
+
+MIND-f-LAYER provides clear error messages:
+
+<AccordionGroup>
+  <Accordion title="401 Unauthorized">
+    ```json
+    {"error": "Unauthorized"}
+    ```
+    Your token is missing, invalid, or expired. Sign in again to get a fresh token.
+  </Accordion>
+  
+  <Accordion title="400 Validation Failed">
+    ```json
+    {
+      "error": "Validation failed",
+      "details": [
+        {
+          "path": ["link"],
+          "message": "Must be a valid URL"
+        }
+      ]
+    }
+    ```
+    Your request body doesn't match the required schema. Check the Zod validation rules.
+  </Accordion>
+  
+  <Accordion title="409 User Already Exists">
+    ```json
+    {"error": "User already exists"}
+    ```
+    Username is taken. Choose a different username or sign in instead.
+  </Accordion>
+  
+  <Accordion title="503 AI Service Unavailable">
+    ```json
+    {
+      "error": "AI service unavailable",
+      "message": "GEMINI_API_KEY is not set. Get a free key at https://aistudio.google.com"
+    }
+    ```
+    The Gemini API key is missing or invalid. Set your `GEMINI_API_KEY` environment variable.
+  </Accordion>
+</AccordionGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Full Installation" icon="gear" href="/installation">
+    Learn how to install MIND-f-LAYER from scratch
+  </Card>
+  
+  <Card title="API Reference" icon="code" href="/api/auth/signup">
+    Explore all available endpoints and schemas
+  </Card>
+</CardGroup>

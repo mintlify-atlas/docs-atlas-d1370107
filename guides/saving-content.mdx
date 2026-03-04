@@ -1,0 +1,326 @@
+---
+title: 'Saving Content'
+description: 'Learn how to save and organize content in your Second Brain'
+icon: 'bookmark'
+---
+
+Saving content to MIND-f-LAYER is the foundation of building your knowledge vault. Every piece of content you save is automatically processed with AI embeddings for semantic search.
+
+## How Content Saving Works
+
+When you save content, MIND-f-LAYER:
+
+1. **Validates** your input (URL format, title length, tags)
+2. **Stores** the content metadata in SQLite
+3. **Generates** a vector embedding from your title, description, and tags
+4. **Indexes** the embedding for fast semantic search
+
+This all happens automatically in the background!
+
+## Supported Content Types
+
+MIND-f-LAYER supports seven content types:
+
+<CardGroup cols={2}>
+  <Card title="Article" icon="newspaper">
+    Blog posts, news articles, documentation
+  </Card>
+  <Card title="Video" icon="video">
+    YouTube, Vimeo, educational content
+  </Card>
+  <Card title="Tweet" icon="twitter">
+    Twitter/X posts, threads
+  </Card>
+  <Card title="Document" icon="file-pdf">
+    PDFs, Google Docs, research papers
+  </Card>
+  <Card title="Audio" icon="podcast">
+    Podcasts, audiobooks, music
+  </Card>
+  <Card title="Image" icon="image">
+    Infographics, diagrams, screenshots
+  </Card>
+  <Card title="Other" icon="ellipsis">
+    Anything that doesn't fit the above
+  </Card>
+</CardGroup>
+
+## Saving Content via API
+
+Here's how to save content programmatically using the REST API:
+
+<CodeGroup>
+
+```javascript JavaScript
+const response = await fetch('http://localhost:8000/api/v1/content', {
+  method: 'POST',
+  headers: {
+    'Content-Type': 'application/json',
+    'Authorization': `Bearer ${yourJwtToken}`
+  },
+  body: JSON.stringify({
+    link: 'https://example.com/article',
+    type: 'article',
+    title: 'Understanding Vector Embeddings',
+    description: 'A comprehensive guide to how vector embeddings work in AI systems',
+    tags: ['ai', 'machine-learning', 'embeddings']
+  })
+})
+
+const data = await response.json()
+console.log(data.message) // "Content created successfully"
+```
+
+```bash cURL
+curl -X POST http://localhost:8000/api/v1/content \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN" \
+  -d '{
+    "link": "https://example.com/article",
+    "type": "article",
+    "title": "Understanding Vector Embeddings",
+    "description": "A comprehensive guide to how vector embeddings work in AI systems",
+    "tags": ["ai", "machine-learning", "embeddings"]
+  }'
+```
+
+```python Python
+import requests
+
+response = requests.post(
+    'http://localhost:8000/api/v1/content',
+    headers={
+        'Content-Type': 'application/json',
+        'Authorization': f'Bearer {your_jwt_token}'
+    },
+    json={
+        'link': 'https://example.com/article',
+        'type': 'article',
+        'title': 'Understanding Vector Embeddings',
+        'description': 'A comprehensive guide to how vector embeddings work in AI systems',
+        'tags': ['ai', 'machine-learning', 'embeddings']
+    }
+)
+
+data = response.json()
+print(data['message'])  # "Content created successfully"
+```
+
+</CodeGroup>
+
+### Request Schema
+
+The content creation endpoint validates your input using this schema:
+
+```typescript
+{
+  link: string (valid URL),
+  type: "article" | "video" | "tweet" | "document" | "audio" | "image" | "other",
+  title: string (1-200 characters),
+  description?: string (max 1000 characters, optional),
+  tags?: string[] (max 10 tags, each max 50 characters, optional)
+}
+```
+
+<Note>
+  All fields are required except `description` and `tags`. However, providing a good description significantly improves AI search quality!
+</Note>
+
+### Response Format
+
+Successful creation returns:
+
+```json
+{
+  "message": "Content created successfully",
+  "content": {
+    "id": 42,
+    "link": "https://example.com/article",
+    "type": "article",
+    "title": "Understanding Vector Embeddings",
+    "description": "A comprehensive guide to how vector embeddings work in AI systems",
+    "tags": ["ai", "machine-learning", "embeddings"],
+    "userId": 1
+  }
+}
+```
+
+## Best Practices
+
+### Writing Effective Titles
+
+Titles are the primary identifier for your content. Follow these guidelines:
+
+<Tip>
+  **Good titles are:**
+  - Descriptive and specific
+  - Include key concepts or topics
+  - Written in natural language
+
+  **Example:**
+  - ✅ "RAG Architecture for Building AI Knowledge Systems"
+  - ❌ "Cool AI thing"
+</Tip>
+
+### Writing Effective Descriptions
+
+Descriptions power the semantic search. The AI creates embeddings from your description, so make them count:
+
+```typescript
+// From src/controllers/content.controller.ts:72
+const embeddingText = `${title}. ${description}. Tags: ${tags.join(", ")}. Type: ${type}`
+const embedding = await generateEmbedding(embeddingText)
+```
+
+<CardGroup cols={2}>
+  <Card title="Do" icon="check" color="#10b981">
+    - Summarize the main points
+    - Include key concepts and terminology
+    - Mention the author or source if relevant
+    - Explain why it's valuable to you
+  </Card>
+  <Card title="Don't" icon="xmark" color="#ef4444">
+    - Leave it empty
+    - Just copy the URL
+    - Use generic phrases like "interesting article"
+    - Include irrelevant information
+  </Card>
+</CardGroup>
+
+**Example:**
+
+```javascript
+// ❌ Poor description
+{
+  title: "AI Article",
+  description: "An article I found",
+  tags: []
+}
+
+// ✅ Excellent description
+{
+  title: "Retrieval-Augmented Generation (RAG) Explained",
+  description: "Comprehensive tutorial on implementing RAG systems using vector databases and LLMs. Covers embedding generation, similarity search, and context injection. Particularly useful for building AI agents that need to reference external knowledge.",
+  tags: ["rag", "llm", "vector-search", "ai-agents"]
+}
+```
+
+### Using Tags Effectively
+
+Tags help organize and categorize your content. They're also included in the embedding generation:
+
+<Steps>
+  <Step title="Use Consistent Naming">
+    Pick a convention and stick to it:
+    - Use lowercase (tags are automatically lowercased)
+    - Use hyphens for multi-word tags: `machine-learning` not `machine learning`
+  </Step>
+
+  <Step title="Be Specific">
+    Prefer specific tags over generic ones:
+    - ✅ `react-hooks`, `typescript`, `nextjs`
+    - ❌ `programming`, `tech`, `cool`
+  </Step>
+
+  <Step title="Limit Tag Count">
+    You can add up to 10 tags, but 3-5 focused tags usually work best:
+    ```javascript
+    tags: ["rag", "vector-search", "gemini-api", "semantic-search"]
+    ```
+  </Step>
+</Steps>
+
+<Tip>
+  Tags are stored globally and reused across content. This means you can filter all content by a specific tag later!
+</Tip>
+
+## Automatic Embedding Generation
+
+When you save content, MIND-f-LAYER automatically generates a 768-dimension vector embedding using Google's `gemini-embedding-001` model:
+
+```typescript
+// From src/services/ai.service.ts:53-66
+export async function generateEmbedding(text: string): Promise<number[]> {
+  return withRetry(async () => {
+    const ai = getGenAI()
+    const model = ai.getGenerativeModel({ model: EMBEDDING_MODEL })
+
+    const result = await model.embedContent({
+      content: { parts: [{ text }], role: "user" },
+      taskType: "RETRIEVAL_DOCUMENT",
+    })
+
+    const embedding = result.embedding.values
+    return embedding.slice(0, EMBEDDING_DIMENSIONS) // 768 dimensions
+  })
+}
+```
+
+This embedding is a mathematical representation of your content's meaning, enabling semantic search.
+
+<Note>
+  If embedding generation fails (e.g., API rate limit), your content is still saved! The system will simply skip the embedding, and you can regenerate it later.
+</Note>
+
+## Retrieving Your Content
+
+Fetch all your saved content with optional filtering:
+
+<CodeGroup>
+
+```javascript All Content
+const response = await fetch('http://localhost:8000/api/v1/content', {
+  headers: {
+    'Authorization': `Bearer ${token}`
+  }
+})
+
+const data = await response.json()
+// Returns: { message, count, content: [...] }
+```
+
+```javascript Filter by Type
+const response = await fetch('http://localhost:8000/api/v1/content?type=article', {
+  headers: {
+    'Authorization': `Bearer ${token}`
+  }
+})
+```
+
+```javascript Filter by Tag
+const response = await fetch('http://localhost:8000/api/v1/content?tag=ai', {
+  headers: {
+    'Authorization': `Bearer ${token}`
+  }
+})
+```
+
+</CodeGroup>
+
+## Deleting Content
+
+Remove content from your vault:
+
+```javascript
+const response = await fetch('http://localhost:8000/api/v1/content', {
+  method: 'DELETE',
+  headers: {
+    'Content-Type': 'application/json',
+    'Authorization': `Bearer ${token}`
+  },
+  body: JSON.stringify({
+    contentId: 42
+  })
+})
+```
+
+<Note>
+  Deleting content automatically removes its embeddings and tag associations thanks to SQLite's CASCADE constraints.
+</Note>
+
+## Next Steps
+
+Now that you know how to save content effectively:
+
+- Learn how to [query your brain](/guides/querying-brain) with semantic search
+- Understand [sharing your knowledge](/guides/sharing) with others

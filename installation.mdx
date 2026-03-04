@@ -1,0 +1,607 @@
+---
+title: Installation Guide
+description: Complete setup instructions for MIND-f-LAYER including Node.js, dependencies, environment variables, and database initialization
+---
+
+# Installation Guide
+
+This guide will walk you through setting up MIND-f-LAYER on your local machine for development.
+
+## Prerequisites
+
+Before you begin, ensure you have the following installed:
+
+<CardGroup cols={2}>
+  <Card title="Node.js" icon="node-js">
+    **Version 18.0.0 or higher**
+    
+    Download from [nodejs.org](https://nodejs.org)
+  </Card>
+  
+  <Card title="npm" icon="npm">
+    **Version 8.0.0 or higher**
+    
+    Comes bundled with Node.js
+  </Card>
+  
+  <Card title="Git" icon="git">
+    **Latest version**
+    
+    Download from [git-scm.com](https://git-scm.com)
+  </Card>
+  
+  <Card title="Text Editor" icon="code">
+    **VS Code recommended**
+    
+    Or any editor of your choice
+  </Card>
+</CardGroup>
+
+## Step 1: Clone the Repository
+
+Clone the MIND-f-LAYER repository to your local machine:
+
+```bash
+git clone https://github.com/yourusername/mind-f-layer.git
+cd mind-f-layer
+```
+
+<Note>
+  Replace `yourusername` with the actual repository owner or your fork.
+</Note>
+
+## Step 2: Install Dependencies
+
+### Backend Dependencies
+
+Install the Node.js packages required for the backend:
+
+```bash
+npm install
+```
+
+This will install all dependencies from `package.json`:
+
+<Accordion title="View package.json Dependencies">
+  ```json
+  {
+    "dependencies": {
+      "@google/generative-ai": "^0.24.1",
+      "bcrypt": "^6.0.0",
+      "cors": "^2.8.6",
+      "crypto-js": "^4.2.0",
+      "express": "^5.2.1",
+      "jsonwebtoken": "^9.0.3",
+      "sqlite": "^5.1.1",
+      "sqlite3": "^5.1.7",
+      "tsx": "^4.21.0",
+      "uuid": "^13.0.0",
+      "zod": "^4.3.6"
+    },
+    "devDependencies": {
+      "@types/bcrypt": "^6.0.0",
+      "@types/cors": "^2.8.19",
+      "@types/express": "^5.0.6",
+      "@types/jsonwebtoken": "^9.0.10",
+      "@types/uuid": "^10.0.0",
+      "typescript": "^5.9.3"
+    }
+  }
+  ```
+</Accordion>
+
+### Frontend Dependencies
+
+Install the React frontend dependencies:
+
+```bash
+cd frontend
+npm install
+cd ..
+```
+
+## Step 3: Get Your Gemini API Key
+
+MIND-f-LAYER uses Google's Gemini API for vector embeddings and AI-powered queries. You'll need a free API key.
+
+<Steps>
+  <Step title="Visit Google AI Studio">
+    Go to [https://aistudio.google.com](https://aistudio.google.com)
+  </Step>
+  
+  <Step title="Create an API Key">
+    Click **"Get API Key"** or **"Create API Key"** in the interface
+    
+    <Note>
+      You'll need a Google account. The free tier includes generous rate limits suitable for personal use.
+    </Note>
+  </Step>
+  
+  <Step title="Copy Your Key">
+    Copy the generated API key. It will look something like:
+    ```
+    AIzaSyABC123def456GHI789jkl012MNO345pqr
+    ```
+  </Step>
+</Steps>
+
+### Why is the API Key Required?
+
+The Gemini API provides two critical AI features:
+
+1. **Vector Embeddings** (`gemini-embedding-001`): Converts text into 768-dimensional vectors for semantic search
+2. **RAG Question Answering** (`gemini-2.5-flash-lite`): Generates grounded answers based on your saved content
+
+<Warning>
+  Without a Gemini API key, basic CRUD operations (create, read, update, delete content) will still work, but embedding generation and AI queries will fail.
+</Warning>
+
+## Step 4: Configure Environment Variables
+
+Create a `.env` file in the project root (or set environment variables directly):
+
+<CodeGroup>
+```bash .env File (Recommended)
+# Gemini AI Configuration (REQUIRED for AI features)
+GEMINI_API_KEY=your_actual_api_key_here
+
+# JWT Secret (optional - has a default)
+JWT_SECRET=your_secret_key_for_jwt_tokens
+```
+
+```bash Export Commands (Alternative)
+export GEMINI_API_KEY="your_actual_api_key_here"
+export JWT_SECRET="your_secret_key_for_jwt_tokens"
+```
+
+```bash Windows CMD
+set GEMINI_API_KEY=your_actual_api_key_here
+set JWT_SECRET=your_secret_key_for_jwt_tokens
+```
+
+```bash Windows PowerShell
+$env:GEMINI_API_KEY="your_actual_api_key_here"
+$env:JWT_SECRET="your_secret_key_for_jwt_tokens"
+```
+</CodeGroup>
+
+### Environment Variable Reference
+
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `GEMINI_API_KEY` | Yes (for AI) | None | Google Gemini API key from AI Studio |
+| `JWT_SECRET` | No | `"CucumberInTheVodka"` | Secret key for JWT token signing |
+
+<Note>
+  The default JWT secret is only for development. **Always use a strong, unique secret in production**.
+</Note>
+
+### How Configuration Works
+
+<Accordion title="View src/configs/config.ts">
+  ```typescript
+  // Environment variables with fallback defaults
+  export const JWT_SECRET = process.env["JWT_SECRET"] ?? "CucumberInTheVodka"
+  
+  export const GEMINI_API_KEY = process.env["GEMINI_API_KEY"] ?? ""
+  export const GENERATION_MODEL = "gemini-2.5-flash-lite"
+  export const EMBEDDING_MODEL = "gemini-embedding-001"
+  export const EMBEDDING_DIMENSIONS = 768
+  ```
+</Accordion>
+
+## Step 5: Initialize the Database
+
+MIND-f-LAYER uses SQLite for data storage. The database is automatically initialized when you start the server for the first time.
+
+### Database Schema
+
+The initialization creates these tables:
+
+<AccordionGroup>
+  <Accordion title="users - User accounts">
+    ```sql
+    CREATE TABLE users (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      username TEXT UNIQUE NOT NULL,
+      password TEXT NOT NULL
+    )
+    ```
+    Stores user credentials with bcrypt-hashed passwords.
+  </Accordion>
+  
+  <Accordion title="content - Saved content items">
+    ```sql
+    CREATE TABLE content (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      link TEXT NOT NULL,
+      type TEXT NOT NULL,
+      title TEXT NOT NULL,
+      description TEXT DEFAULT '',
+      userId INTEGER NOT NULL,
+      createdAt TEXT DEFAULT (datetime('now')),
+      FOREIGN KEY (userId) REFERENCES users(id) ON DELETE CASCADE
+    )
+    ```
+    Stores articles, videos, tweets, documents, etc.
+  </Accordion>
+  
+  <Accordion title="tags - Content tags">
+    ```sql
+    CREATE TABLE tags (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      title TEXT UNIQUE NOT NULL
+    )
+    ```
+    Normalized tag storage with unique constraint.
+  </Accordion>
+  
+  <Accordion title="content_tags - Many-to-many relationship">
+    ```sql
+    CREATE TABLE content_tags (
+      contentId INTEGER,
+      tagId INTEGER,
+      PRIMARY KEY (contentId, tagId),
+      FOREIGN KEY (contentId) REFERENCES content(id) ON DELETE CASCADE,
+      FOREIGN KEY (tagId) REFERENCES tags(id) ON DELETE CASCADE
+    )
+    ```
+    Junction table linking content to tags.
+  </Accordion>
+  
+  <Accordion title="embeddings - Vector storage">
+    ```sql
+    CREATE TABLE embeddings (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      contentId INTEGER NOT NULL UNIQUE,
+      embedding TEXT NOT NULL,
+      FOREIGN KEY (contentId) REFERENCES content(id) ON DELETE CASCADE
+    )
+    ```
+    Stores 768-dimensional vectors as JSON arrays for semantic search.
+  </Accordion>
+  
+  <Accordion title="links - Public share links">
+    ```sql
+    CREATE TABLE links (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      hash TEXT UNIQUE NOT NULL,
+      userId INTEGER NOT NULL,
+      FOREIGN KEY (userId) REFERENCES users(id) ON DELETE CASCADE
+    )
+    ```
+    Stores unique hash links for public brain sharing.
+  </Accordion>
+</AccordionGroup>
+
+### Database Location
+
+The SQLite database is created at:
+```
+./database.db
+```
+
+You can inspect it using tools like:
+- [DB Browser for SQLite](https://sqlitebrowser.org)
+- [SQLite CLI](https://www.sqlite.org/cli.html)
+- VS Code extension: SQLite Viewer
+
+## Step 6: Start the Development Server
+
+### Backend Server
+
+Start the Express.js backend:
+
+```bash
+npm start
+```
+
+You should see:
+```
+Initializing database...
+Database initialized
+Server running on port 8000
+API:      http://localhost:8000/api/v1
+Frontend: http://localhost:5173 (dev) or http://localhost:8000
+```
+
+<Note>
+  The server uses `tsx` to run TypeScript files directly without a build step during development.
+</Note>
+
+### Frontend Development Server
+
+In a **new terminal window**, start the React development server:
+
+```bash
+cd frontend
+npm run dev
+```
+
+You should see:
+```
+VITE v5.x.x  ready in xxx ms
+
+➜  Local:   http://localhost:5173/
+➜  Network: use --host to expose
+```
+
+## Step 7: Verify Installation
+
+Test that everything is working:
+
+### Check Backend Health
+
+```bash
+curl http://localhost:8000/api/v1/auth/signup \
+  -H "Content-Type: application/json" \
+  -d '{"username":"test","password":"test123"}'
+```
+
+Expected response:
+```json
+{
+  "message": "Account created successfully",
+  "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "userId": 1
+}
+```
+
+### Check Frontend
+
+Open your browser to [http://localhost:5173](http://localhost:5173)
+
+You should see the MIND-f-LAYER interface with:
+- Glassmorphic dark theme
+- Login/Signup forms
+- API Explorer
+
+## Project Structure
+
+Understanding the codebase layout:
+
+```
+mind-f-layer/
+├── src/
+│   ├── index.ts                 # Express app entry point
+│   ├── configs/
+│   │   └── config.ts            # Environment variables & AI config
+│   ├── database/
+│   │   └── db.ts                # SQLite initialization & schema
+│   ├── controllers/
+│   │   ├── auth.controller.ts   # Signup/signin logic
+│   │   ├── content.controller.ts # CRUD operations
+│   │   └── brain.controller.ts  # AI query & semantic search
+│   ├── routes/
+│   │   ├── index.ts             # Main router
+│   │   ├── auth.routes.ts       # /api/v1/auth/*
+│   │   ├── content.routes.ts    # /api/v1/content/*
+│   │   └── brain.routes.ts      # /api/v1/brain/*
+│   ├── middlewares/
+│   │   └── auth.middleware.ts   # JWT verification
+│   └── services/
+│       └── ai.service.ts        # Gemini API integration
+├── frontend/
+│   ├── src/
+│   │   ├── App.jsx              # React root component
+│   │   ├── services/
+│   │   │   └── api.js           # API client
+│   │   └── components/          # React components
+│   └── package.json
+├── database.db                  # SQLite database (auto-created)
+├── package.json
+├── tsconfig.json                # TypeScript configuration
+└── README.md
+```
+
+## Development Workflow
+
+### Making Code Changes
+
+1. **Backend changes**: The server auto-restarts with `tsx watch` mode (if configured)
+2. **Frontend changes**: Vite provides instant Hot Module Replacement (HMR)
+
+### Running Tests
+
+```bash
+npm test
+```
+
+<Note>
+  No tests are configured by default. You can add Jest or Vitest for testing.
+</Note>
+
+### Building for Production
+
+```bash
+npm run build
+```
+
+This command:
+1. Installs backend dependencies
+2. Changes to `frontend/` directory
+3. Installs frontend dependencies
+4. Builds the React app to `frontend/dist/`
+
+The production server serves the built frontend from `frontend/dist/`:
+
+<Accordion title="View Production Setup (src/index.ts:22)">
+  ```typescript
+  // Serve static React frontend
+  app.use(express.static(path.join(__dirname, '../frontend/dist')))
+  
+  // Use versioned API routes
+  app.use('/api/v1', apiRouter)
+  
+  // Catch-all: serve React app for any non-API route
+  app.get('{*path}', (req, res) => {
+    const indexPath = path.join(__dirname, '../frontend/dist/index.html')
+    res.sendFile(indexPath)
+  })
+  ```
+</Accordion>
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Port 8000 already in use">
+    **Problem**: Another process is using port 8000
+    
+    **Solution**: Kill the existing process or change the port in `src/index.ts:11`
+    
+    ```bash
+    # Find process on port 8000
+    lsof -i :8000
+    
+    # Kill it
+    kill -9 <PID>
+    ```
+  </Accordion>
+  
+  <Accordion title="GEMINI_API_KEY not found">
+    **Problem**: Environment variable not set
+    
+    **Solution**: Make sure you've set the variable in `.env` or exported it:
+    
+    ```bash
+    export GEMINI_API_KEY="your_key_here"
+    npm start
+    ```
+    
+    Verify it's set:
+    ```bash
+    echo $GEMINI_API_KEY
+    ```
+  </Accordion>
+  
+  <Accordion title="Database locked error">
+    **Problem**: SQLite database is being accessed by multiple processes
+    
+    **Solution**: Close all connections and restart:
+    
+    ```bash
+    rm database.db
+    npm start
+    ```
+    
+    This recreates the database from scratch.
+  </Accordion>
+  
+  <Accordion title="npm install fails on bcrypt">
+    **Problem**: bcrypt requires native compilation
+    
+    **Solution**: Install build tools:
+    
+    **macOS**:
+    ```bash
+    xcode-select --install
+    ```
+    
+    **Linux (Ubuntu/Debian)**:
+    ```bash
+    sudo apt-get install build-essential python3
+    ```
+    
+    **Windows**:
+    ```bash
+    npm install --global windows-build-tools
+    ```
+  </Accordion>
+  
+  <Accordion title="CORS errors in browser">
+    **Problem**: Frontend can't access backend API
+    
+    **Solution**: Ensure CORS is configured correctly in `src/index.ts:15`
+    
+    ```typescript
+    app.use(cors({
+      origin: ['http://localhost:5173', 'http://localhost:8000'],
+      credentials: true,
+    }))
+    ```
+    
+    Add your frontend URL if it's different.
+  </Accordion>
+  
+  <Accordion title="Gemini API rate limit errors">
+    **Problem**: Too many API requests (429 status code)
+    
+    **Solution**: MIND-f-LAYER has built-in exponential backoff retry logic:
+    
+    ```typescript
+    // From src/services/ai.service.ts:26
+    async function withRetry(fn, maxRetries = 3, baseDelayMs = 1000) {
+      for (let attempt = 0; attempt < maxRetries; attempt++) {
+        try {
+          return await fn()
+        } catch (err) {
+          if (err?.status === 429 || err?.status === 503) {
+            const delay = baseDelayMs * Math.pow(2, attempt)
+            await new Promise(resolve => setTimeout(resolve, delay))
+            continue
+          }
+          throw err
+        }
+      }
+    }
+    ```
+    
+    The system automatically retries with delays: 1s, 2s, 4s.
+  </Accordion>
+</AccordionGroup>
+
+## Advanced Configuration
+
+### Changing the AI Model
+
+Edit `src/configs/config.ts` to use different Gemini models:
+
+```typescript
+export const GENERATION_MODEL = "gemini-2.5-flash-lite" // or "gemini-pro"
+export const EMBEDDING_MODEL = "gemini-embedding-001"
+export const EMBEDDING_DIMENSIONS = 768
+```
+
+### Using a Different Vector Database
+
+By default, vectors are stored as JSON in SQLite. For production scale (millions of vectors), consider:
+
+- **Pinecone**: Managed vector database
+- **Chroma**: Open-source vector store
+- **Weaviate**: Vector search engine
+- **Qdrant**: Vector similarity search
+
+Modify `src/services/ai.service.ts` and `src/controllers/brain.controller.ts` to integrate these services.
+
+### Custom Port Configuration
+
+Change the server port in `src/index.ts`:
+
+```typescript
+const PORT: number = process.env.PORT ? parseInt(process.env.PORT) : 8000
+```
+
+Then set it via environment variable:
+```bash
+PORT=3000 npm start
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Quickstart Guide" icon="rocket" href="/quickstart">
+    Learn how to use MIND-f-LAYER with practical examples
+  </Card>
+  
+  <Card title="API Reference" icon="book" href="/api/auth/signup">
+    Explore all endpoints, schemas, and response formats
+  </Card>
+  
+  <Card title="Architecture Deep Dive" icon="sitemap" href="/architecture/overview">
+    Understand the RAG pipeline and system design
+  </Card>
+  
+  <Card title="Guides" icon="cloud" href="/guides/setup">
+    Learn how to set up and use MIND-f-LAYER
+  </Card>
+</CardGroup>

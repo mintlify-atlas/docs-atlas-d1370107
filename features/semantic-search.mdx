@@ -1,0 +1,307 @@
+---
+title: 'Semantic Search'
+description: 'Find content by meaning, not just keywords, using AI-powered vector embeddings'
+icon: 'magnifying-glass'
+---
+
+## Overview
+
+MIND-f-LAYER's semantic search enables you to find content based on meaning and context, not just exact keyword matches. Instead of relying on traditional keyword-based search, the system uses vector embeddings to understand the semantic relationships between your query and saved content.
+
+<Info>
+  Semantic search can find relevant content even when the exact words don't match. For example, searching for "machine learning tutorials" will also surface content about "AI training guides" or "neural network courses".
+</Info>
+
+## How It Works
+
+### 1. Vector Embeddings
+
+When you save content to your Second Brain, MIND-f-LAYER generates a **vector embedding** - a numerical representation that captures the semantic meaning of the content.
+
+```typescript
+// From ai.service.ts:53-66
+export async function generateEmbedding(text: string): Promise<number[]> {
+    const ai = getGenAI()
+    const model = ai.getGenerativeModel({ model: EMBEDDING_MODEL })
+
+    const result = await model.embedContent({
+        content: { parts: [{ text }], role: "user" },
+        taskType: "RETRIEVAL_DOCUMENT" as any,
+    })
+
+    const embedding = result.embedding.values
+    return embedding.slice(0, EMBEDDING_DIMENSIONS)
+}
+```
+
+**Embedding Configuration:**
+- Model: `gemini-embedding-001` (Google Gemini)
+- Dimensions: 768-dimensional vectors
+- Task Type: `RETRIEVAL_DOCUMENT` for stored content
+
+### 2. Embedding Generation Process
+
+When you create content, the system combines multiple fields into a rich text representation:
+
+```typescript
+// From content.controller.ts:72-78
+const embeddingText = `${title}. ${description}. Tags: ${tags.join(", ")}. Type: ${type}`
+
+try {
+    const embedding = await generateEmbedding(embeddingText)
+    await db.run(
+        `INSERT INTO embeddings (contentId, embedding) VALUES (?, ?)`,
+        [contentId, JSON.stringify(embedding)]
+    )
+} catch (embErr) {
+    console.error("Failed to generate embedding:", embErr)
+}
+```
+
+<Note>
+  Embeddings are stored in the `embeddings` table as JSON strings. Each content item has a unique embedding that captures its semantic meaning.
+</Note>
+
+### 3. Cosine Similarity
+
+When you search, MIND-f-LAYER calculates the **cosine similarity** between your query embedding and all stored content embeddings. This measures how similar two vectors are, regardless of their magnitude.
+
+```typescript
+// From ai.service.ts:91-108
+export function cosineSimilarity(a: number[], b: number[]): number {
+    const length = Math.min(a.length, b.length)
+    let dotProduct = 0
+    let normA = 0
+    let normB = 0
+
+    for (let i = 0; i < length; i++) {
+        const valA = a[i]!
+        const valB = b[i]!
+        dotProduct += valA * valB
+        normA += valA * valA
+        normB += valB * valB
+    }
+
+    const denominator = Math.sqrt(normA) * Math.sqrt(normB)
+    if (denominator === 0) return 0
+    return dotProduct / denominator
+}
+```
+
+**Similarity Scores:**
+- Range: 0.0 to 1.0 (0% to 100%)
+- Threshold: Results with similarity > 0.3 (30%) are considered relevant
+- Higher scores indicate stronger semantic relationships
+
+### 4. Query Embeddings
+
+Search queries use a specialized embedding optimized for retrieval:
+
+```typescript
+// From ai.service.ts:71-86
+export async function generateQueryEmbedding(query: string): Promise<number[]> {
+    const ai = getGenAI()
+    const model = ai.getGenerativeModel({ model: EMBEDDING_MODEL })
+
+    const result = await model.embedContent({
+        content: { parts: [{ text: query }], role: "user" },
+        taskType: "RETRIEVAL_QUERY" as any,  // Optimized for queries
+    })
+
+    const embedding = result.embedding.values
+    return embedding.slice(0, EMBEDDING_DIMENSIONS)
+}
+```
+
+## Semantic Search vs Keyword Search
+
+<CardGroup cols={2}>
+  <Card title="Keyword Search" icon="text">
+    - Matches exact words only
+    - Case-sensitive or insensitive
+    - No understanding of context
+    - Misses synonyms and related terms
+    - Fast but limited
+  </Card>
+  <Card title="Semantic Search" icon="brain">
+    - Understands meaning and context
+    - Finds conceptually similar content
+    - Recognizes synonyms and related terms
+    - Language and phrasing independent
+    - AI-powered intelligence
+  </Card>
+</CardGroup>
+
+### Example Comparison
+
+| Query | Keyword Search Would Miss | Semantic Search Finds |
+|-------|--------------------------|----------------------|
+| "React components" | "building UI elements with React" | ✓ Finds it |
+| "database optimization" | "making SQL queries faster" | ✓ Finds it |
+| "authentication best practices" | "secure login implementation" | ✓ Finds it |
+
+## Using Semantic Search
+
+### API Endpoint
+
+```bash
+POST /api/v1/brain/search
+Authorization: Bearer <your-token>
+Content-Type: application/json
+
+{
+  "query": "machine learning tutorials",
+  "topK": 5
+}
+```
+
+### Request Parameters
+
+<ParamField path="query" type="string" required>
+  Your search query (1-500 characters)
+</ParamField>
+
+<ParamField path="topK" type="integer" default={5}>
+  Number of results to return (1-20)
+</ParamField>
+
+### Response Format
+
+```json
+{
+  "message": "Search completed",
+  "results": [
+    {
+      "id": 42,
+      "title": "Deep Learning Fundamentals",
+      "link": "https://example.com/dl-course",
+      "type": "article",
+      "description": "Comprehensive guide to neural networks...",
+      "score": 87.3,
+      "tags": ["ai", "deep-learning", "tutorial"]
+    },
+    {
+      "id": 15,
+      "title": "Introduction to Neural Networks",
+      "link": "https://example.com/nn-basics",
+      "type": "video",
+      "description": "Step-by-step video series on AI training...",
+      "score": 82.1,
+      "tags": ["machine-learning", "video-course"]
+    }
+  ]
+}
+```
+
+### Implementation Flow
+
+```typescript
+// From brain.controller.ts:129-189
+export async function semanticSearch(req: Request, res: Response) {
+    const userId = req.userId
+    const { query: searchQuery, topK } = parsed
+    
+    // 1. Fetch all embeddings for user's content
+    const rows = await db.all(
+        `SELECT e.contentId, e.embedding, c.title, c.link, c.type, c.description
+         FROM embeddings e
+         JOIN content c ON e.contentId = c.id
+         WHERE c.userId = ?`,
+        [userId]
+    )
+    
+    // 2. Generate query embedding
+    const queryEmbedding = await generateQueryEmbedding(searchQuery)
+    
+    // 3. Calculate similarity scores
+    const scored = rows
+        .map((row: any) => {
+            const storedEmbedding = JSON.parse(row.embedding) as number[]
+            const score = cosineSimilarity(queryEmbedding, storedEmbedding)
+            return { ...row, score }
+        })
+        .sort((a, b) => b.score - a.score)
+        .slice(0, topK)
+    
+    // 4. Return results with tags
+    return results
+}
+```
+
+## Performance Considerations
+
+<Warning>
+  Semantic search computes similarity against **all** content embeddings in-memory. For large collections (>10,000 items), consider implementing vector database solutions like Pinecone, Weaviate, or pgvector for better performance.
+</Warning>
+
+### Current Implementation
+
+- **Embedding Storage:** SQLite database as JSON strings
+- **Similarity Calculation:** In-memory computation
+- **Time Complexity:** O(n × d) where n = number of items, d = embedding dimensions (768)
+- **Scalability:** Suitable for personal collections up to ~5,000 items
+
+### Optimization Strategies
+
+1. **Caching:** Query embeddings are generated fresh each time
+2. **Indexing:** Consider approximate nearest neighbor (ANN) algorithms for larger datasets
+3. **Batch Processing:** Embeddings are generated asynchronously during content creation
+4. **Error Handling:** Content creation succeeds even if embedding generation fails
+
+## Error Handling
+
+### Rate Limiting
+
+The Gemini API has rate limits. The service includes automatic retry logic:
+
+```typescript
+// From ai.service.ts:26-48
+async function withRetry<T>(
+    fn: () => Promise<T>,
+    maxRetries = 3,
+    baseDelayMs = 1000
+): Promise<T> {
+    for (let attempt = 0; attempt < maxRetries; attempt++) {
+        try {
+            return await fn()
+        } catch (err: any) {
+            if (err?.status === 429 || err?.status === 503) {
+                const delay = baseDelayMs * Math.pow(2, attempt)
+                await new Promise((resolve) => setTimeout(resolve, delay))
+                continue
+            }
+            throw err
+        }
+    }
+}
+```
+
+### Common Issues
+
+<AccordionGroup>
+  <Accordion title="No results found">
+    Results require a minimum similarity score of 0.3 (30%). Try:
+    - Rephrasing your query
+    - Using more descriptive terms
+    - Adding more related content to your vault
+  </Accordion>
+  
+  <Accordion title="API key errors">
+    Ensure `GEMINI_API_KEY` is set in your environment variables. Get a free key at [Google AI Studio](https://aistudio.google.com).
+  </Accordion>
+  
+  <Accordion title="Slow search performance">
+    Large collections (>5,000 items) may experience slower search times. Consider implementing a vector database or using pagination.
+  </Accordion>
+</AccordionGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="AI Query" icon="comments" href="/features/ai-query">
+    Learn how to ask questions and get AI-generated answers using RAG
+  </Card>
+  <Card title="Content Management" icon="folder" href="/features/content-management">
+    Discover how to organize and manage your content
+  </Card>
+</CardGroup>

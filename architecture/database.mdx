@@ -1,0 +1,680 @@
+---
+title: 'Database Schema'
+description: 'SQLite schema, relationships, and design decisions for MIND-f-LAYER'
+icon: 'database'
+---
+
+## Overview
+
+MIND-f-LAYER uses **SQLite** as its primary database for storing users, content, tags, and vector embeddings. SQLite is a lightweight, serverless database that stores all data in a single file (`database.db`).
+
+<Info>
+  SQLite is an excellent choice for personal knowledge management applications where a single user (or small team) needs reliable, ACID-compliant storage without the overhead of running a database server.
+</Info>
+
+## Why SQLite?
+
+<CardGroup cols={2}>
+  <Card title="Zero Configuration" icon="bolt">
+    No database server to install, configure, or maintain
+  </Card>
+  <Card title="Single File Storage" icon="file">
+    Entire database in `database.db` - easy backups
+  </Card>
+  <Card title="ACID Compliant" icon="shield-check">
+    Full transactional support with rollback capability
+  </Card>
+  <Card title="Fast Enough" icon="gauge-high">
+    Handles thousands of queries per second for single-user apps
+  </Card>
+  <Card title="Cross-Platform" icon="globe">
+    Works identically on Windows, macOS, Linux
+  </Card>
+  <Card title="Embeddable" icon="box">
+    Runs in-process (no network latency)
+  </Card>
+</CardGroup>
+
+<Accordion title="When NOT to use SQLite">
+  SQLite is not ideal for:
+  - **High concurrency**: Multiple writers can cause lock contention
+  - **Large-scale applications**: 100K+ concurrent users
+  - **Network databases**: SQLite requires direct file access
+  - **Very large datasets**: >100GB (though it supports up to 281TB)
+  
+  For MIND-f-LAYER's personal knowledge management use case, SQLite is perfectly suited.
+</Accordion>
+
+## Database Initialization
+
+The database is initialized on application startup:
+
+```typescript src/database/db.ts
+import sqlite3 from 'sqlite3'
+import { open, Database } from 'sqlite'
+
+let db: Database
+
+export async function initDB() {
+  db = await open({
+    filename: './database.db',
+    driver: sqlite3.Database
+  })
+
+  // Enable foreign keys for referential integrity
+  await db.exec(`PRAGMA foreign_keys = ON;`)
+
+  // Create tables (shown below)
+  await db.exec(/* CREATE TABLE statements */)
+
+  console.log("Database initialized")
+}
+
+export function getDB() {
+  if (!db) {
+    throw new Error("Database not initialised call initDB() first")
+  }
+  return db
+}
+```
+
+<Note>
+  Foreign key constraints are disabled by default in SQLite. The `PRAGMA foreign_keys = ON;` statement enables them, ensuring referential integrity.
+</Note>
+
+## Schema Overview
+
+```
+┌──────────────┐
+│    users     │
+│──────────────│
+│ id (PK)      │───┐
+│ username     │   │
+│ password     │   │
+└──────────────┘   │
+                   │
+                   │ userId (FK)
+                   ▼
+        ┌──────────────────┐         ┌──────────────┐
+        │     content      │◄───────►│     links    │
+        │──────────────────│  userId │──────────────│
+        │ id (PK)          │         │ id (PK)      │
+        │ link             │         │ hash (UNIQUE)│
+        │ type             │         │ userId (FK)  │
+        │ title            │         └──────────────┘
+        │ description      │
+        │ userId (FK)      │
+        │ createdAt        │
+        └──────────────────┘
+               │ ▲
+               │ │ contentId (FK)
+               │ │
+               ▼ │
+    ┌──────────────────┐       ┌──────────────┐
+    │   embeddings     │       │content_tags  │
+    │──────────────────│       │──────────────│
+    │ id (PK)          │       │contentId (FK)│
+    │ contentId (FK)   │       │tagId (FK)    │
+    │ embedding (JSON) │       └──────┬───────┘
+    └──────────────────┘              │
+                                      │ tagId (FK)
+                                      ▼
+                              ┌──────────────┐
+                              │     tags     │
+                              │──────────────│
+                              │ id (PK)      │
+                              │ title (UNIQUE)│
+                              └──────────────┘
+```
+
+## Table Schemas
+
+### Users Table
+
+Stores user authentication credentials:
+
+```sql src/database/db.ts
+CREATE TABLE IF NOT EXISTS users (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    username TEXT UNIQUE NOT NULL,
+    password TEXT NOT NULL  -- bcrypt hashed
+);
+```
+
+<Warning>
+  Passwords are stored using bcrypt hashing (salt + hash). Never store plaintext passwords!
+</Warning>
+
+**Example Row:**
+
+| id | username | password |
+|----|----------|----------|
+| 1 | alice | $2b$10$N9qo8... (bcrypt hash) |
+| 2 | bob | $2b$10$X4po2... |
+
+### Content Table
+
+Stores all saved content items (articles, videos, tweets, etc.):
+
+```sql src/database/db.ts
+CREATE TABLE IF NOT EXISTS content (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    link TEXT NOT NULL,
+    type TEXT NOT NULL,  -- 'article', 'video', 'tweet', 'document', etc.
+    title TEXT NOT NULL,
+    description TEXT DEFAULT '',
+    userId INTEGER NOT NULL,
+    createdAt TEXT DEFAULT (datetime('now')),
+    FOREIGN KEY (userId) REFERENCES users(id) ON DELETE CASCADE
+);
+```
+
+**Content Types:**
+
+- `article` - Blog posts, news articles
+- `video` - YouTube, Vimeo, etc.
+- `tweet` - Twitter/X posts
+- `document` - PDFs, docs
+- `audio` - Podcasts, music
+- `image` - Photos, diagrams
+- `other` - Anything else
+
+**Example Row:**
+
+| id | link | type | title | description | userId | createdAt |
+|----|------|------|-------|-------------|--------|------------|
+| 42 | https://example.com/rag | article | Intro to RAG | Learn how RAG works | 1 | 2026-03-04 10:30:00 |
+
+<Note>
+  The `createdAt` field uses SQLite's `datetime('now')` function to auto-populate timestamps in UTC.
+</Note>
+
+### Tags Table
+
+Stores unique tag labels:
+
+```sql src/database/db.ts
+CREATE TABLE IF NOT EXISTS tags (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    title TEXT UNIQUE NOT NULL  -- lowercase normalized
+);
+```
+
+**Example Rows:**
+
+| id | title |
+|----|-------|
+| 1 | ai |
+| 2 | rag |
+| 3 | machine-learning |
+
+<Info>
+  Tags are stored in lowercase for case-insensitive matching. "AI", "ai", and "Ai" all map to the same tag.
+</Info>
+
+### Content_Tags Join Table
+
+Many-to-many relationship between content and tags:
+
+```sql src/database/db.ts
+CREATE TABLE IF NOT EXISTS content_tags (
+  contentId INTEGER,
+  tagId INTEGER,
+  PRIMARY KEY (contentId, tagId),
+  FOREIGN KEY (contentId) REFERENCES content(id) ON DELETE CASCADE,
+  FOREIGN KEY (tagId) REFERENCES tags(id) ON DELETE CASCADE
+);
+```
+
+**Example Rows:**
+
+| contentId | tagId |
+|-----------|-------|
+| 42 | 1 | 
+| 42 | 2 |
+| 43 | 1 |
+
+<Accordion title="Why a join table?">
+  A many-to-many relationship requires a join table because:
+  - One content item can have multiple tags
+  - One tag can be associated with multiple content items
+  
+  The composite primary key `(contentId, tagId)` ensures no duplicate relationships.
+</Accordion>
+
+### Embeddings Table
+
+Stores 768-dimensional vector embeddings for semantic search:
+
+```sql src/database/db.ts
+CREATE TABLE IF NOT EXISTS embeddings (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  contentId INTEGER NOT NULL UNIQUE,
+  embedding TEXT NOT NULL,  -- JSON array of 768 floats
+  FOREIGN KEY (contentId) REFERENCES content(id) ON DELETE CASCADE
+);
+```
+
+**Example Row:**
+
+| id | contentId | embedding |
+|----|-----------|------------|
+| 1 | 42 | [0.234,-0.567,0.891,...] (768 numbers) |
+
+<Warning>
+  Embeddings are stored as JSON TEXT, not optimized binary format. For 10K+ items, consider BLOB storage or a dedicated vector database.
+</Warning>
+
+### Links Table (Share Links)
+
+Stores shareable links for public brain sharing:
+
+```sql src/database/db.ts
+CREATE TABLE IF NOT EXISTS links (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  hash TEXT UNIQUE NOT NULL,  -- 12-character UUID hash
+  userId INTEGER NOT NULL,
+  FOREIGN KEY (userId) REFERENCES users(id) ON DELETE CASCADE
+);
+```
+
+**Example Row:**
+
+| id | hash | userId |
+|----|------|--------|
+| 1 | a3f9d2c1b4e8 | 1 |
+
+<Info>
+  Share links use a 12-character hash generated from UUID v4. Example URL: `/api/v1/brain/a3f9d2c1b4e8`
+</Info>
+
+## Relationships and Constraints
+
+### Foreign Key Relationships
+
+```typescript
+content.userId → users.id  (ON DELETE CASCADE)
+content_tags.contentId → content.id  (ON DELETE CASCADE)
+content_tags.tagId → tags.id  (ON DELETE CASCADE)
+embeddings.contentId → content.id  (ON DELETE CASCADE)
+links.userId → users.id  (ON DELETE CASCADE)
+```
+
+### Cascade Deletes
+
+When a user is deleted, all related data is automatically removed:
+
+```sql
+DELETE FROM users WHERE id = 1;
+
+-- Automatically deletes:
+-- • All content by that user
+-- • All embeddings for that content
+-- • All content_tags relationships
+-- • All share links for that user
+```
+
+<Warning>
+  Cascade deletes are powerful but dangerous. Always confirm before deleting users in production.
+</Warning>
+
+### Unique Constraints
+
+- `users.username` - No duplicate usernames
+- `tags.title` - No duplicate tags
+- `embeddings.contentId` - One embedding per content item
+- `links.hash` - Unique share links
+
+## Common Queries
+
+### Create Content with Tags and Embedding
+
+```typescript src/controllers/content.controller.ts
+// 1. Insert content
+const result = await db.run(
+    `INSERT INTO content (link, type, title, description, userId) 
+     VALUES (?, ?, ?, ?, ?)`,
+    [link, type, title, description, userId]
+)
+const contentId = result.lastID
+
+// 2. Insert or get tags
+for (const tagTitle of tags) {
+    await db.run(
+        `INSERT OR IGNORE INTO tags (title) VALUES (?)`,
+        [tagTitle.toLowerCase()]
+    )
+    const tag = await db.get(
+        `SELECT id FROM tags WHERE title = ?`,
+        [tagTitle.toLowerCase()]
+    )
+    
+    // 3. Link content to tag
+    await db.run(
+        `INSERT OR IGNORE INTO content_tags (contentId, tagId) 
+         VALUES (?, ?)`,
+        [contentId, tag.id]
+    )
+}
+
+// 4. Generate and store embedding
+const embedding = await generateEmbedding(`${title}. ${description}. Tags: ${tags.join(', ')}`)
+await db.run(
+    `INSERT INTO embeddings (contentId, embedding) VALUES (?, ?)`,
+    [contentId, JSON.stringify(embedding)]
+)
+```
+
+### Retrieve Content with Tags
+
+```typescript src/controllers/content.controller.ts
+const contents = await db.all(
+    `SELECT c.id, c.link, c.type, c.title, c.description, c.createdAt
+     FROM content c
+     WHERE c.userId = ?
+     ORDER BY c.createdAt DESC`,
+    [userId]
+)
+
+// Fetch tags for each content item
+const result = await Promise.all(
+    contents.map(async (content: any) => {
+        const tags = await db.all(
+            `SELECT t.title FROM tags t
+             JOIN content_tags ct ON t.id = ct.tagId
+             WHERE ct.contentId = ?`,
+            [content.id]
+        )
+        return {
+            ...content,
+            tags: tags.map((t: any) => t.title),
+        }
+    })
+)
+```
+
+### Semantic Search Query
+
+```typescript src/controllers/brain.controller.ts
+// Fetch all embeddings for user's content
+const rows = await db.all(
+    `SELECT e.contentId, e.embedding, c.title, c.link, c.type, c.description
+     FROM embeddings e
+     JOIN content c ON e.contentId = c.id
+     WHERE c.userId = ?`,
+    [userId]
+)
+
+// Compute cosine similarity in-memory
+const scored = rows
+    .map((row: any) => {
+        const storedEmbedding = JSON.parse(row.embedding) as number[]
+        const score = cosineSimilarity(queryEmbedding, storedEmbedding)
+        return { ...row, score }
+    })
+    .sort((a, b) => b.score - a.score)
+    .slice(0, topK)
+```
+
+### Delete Content (Cascade)
+
+```typescript src/controllers/content.controller.ts
+// This single DELETE triggers cascades to:
+// - embeddings table (removes associated embedding)
+// - content_tags table (removes tag associations)
+await db.run(`DELETE FROM content WHERE id = ? AND userId = ?`, 
+    [contentId, userId]
+)
+```
+
+## Performance Considerations
+
+### Indexes
+
+Currently, only primary keys are indexed. For better performance at scale, consider:
+
+```sql
+-- Index for filtering by user
+CREATE INDEX idx_content_userId ON content(userId);
+
+-- Index for filtering by type
+CREATE INDEX idx_content_type ON content(type);
+
+-- Index for tag lookups
+CREATE INDEX idx_tags_title ON tags(title);
+
+-- Index for embedding lookups
+CREATE INDEX idx_embeddings_contentId ON embeddings(contentId);
+```
+
+<Note>
+  SQLite automatically creates indexes for `PRIMARY KEY` and `UNIQUE` constraints, so `users.username`, `tags.title`, and `embeddings.contentId` are already indexed.
+</Note>
+
+### Query Optimization
+
+<AccordionGroup>
+  <Accordion title="Use JOINs instead of N+1 queries">
+    **Bad:**
+    ```typescript
+    const contents = await db.all(`SELECT * FROM content WHERE userId = ?`, [userId])
+    for (const content of contents) {
+        content.tags = await db.all(`SELECT ... WHERE contentId = ?`, [content.id])
+    }
+    ```
+    
+    **Better (but still N queries):**
+    ```typescript
+    const contents = await db.all(`SELECT * FROM content WHERE userId = ?`, [userId])
+    await Promise.all(contents.map(async (content) => {
+        content.tags = await db.all(`SELECT ... WHERE contentId = ?`, [content.id])
+    }))
+    ```
+    
+    **Best (single query with GROUP_CONCAT):**
+    ```sql
+    SELECT c.*, GROUP_CONCAT(t.title) as tags
+    FROM content c
+    LEFT JOIN content_tags ct ON c.id = ct.contentId
+    LEFT JOIN tags t ON ct.tagId = t.id
+    WHERE c.userId = ?
+    GROUP BY c.id
+    ```
+  </Accordion>
+
+  <Accordion title="Batch inserts with transactions">
+    ```typescript
+    await db.run('BEGIN TRANSACTION')
+    try {
+        for (const tag of tags) {
+            await db.run(`INSERT OR IGNORE INTO tags (title) VALUES (?)`, [tag])
+        }
+        await db.run('COMMIT')
+    } catch (err) {
+        await db.run('ROLLBACK')
+        throw err
+    }
+    ```
+  </Accordion>
+</AccordionGroup>
+
+### Storage Size
+
+Estimated storage per item:
+
+| Component | Size per Item |
+|-----------|---------------|
+| Content row | ~500 bytes |
+| Embedding (768 floats) | ~3-4 KB |
+| Tags (avg 3) | ~100 bytes |
+| **Total** | **~4 KB** |
+
+<Info>
+  **Scalability estimate:**
+  - 1,000 items ≈ 4 MB
+  - 10,000 items ≈ 40 MB
+  - 100,000 items ≈ 400 MB
+  
+  SQLite handles this easily with fast query times (under 100ms for most queries).
+</Info>
+
+## Backup and Recovery
+
+### Manual Backup
+
+```bash
+# SQLite stores everything in a single file
+cp database.db database.backup.db
+
+# Or use SQLite's backup command
+sqlite3 database.db ".backup database.backup.db"
+```
+
+### Automated Backup Script
+
+```typescript
+import { exec } from 'child_process'
+import { promisify } from 'util'
+
+const execAsync = promisify(exec)
+
+async function backupDatabase() {
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-')
+    const backupFile = `backups/database-${timestamp}.db`
+    
+    await execAsync(`sqlite3 database.db ".backup ${backupFile}"`)
+    console.log(`Backup created: ${backupFile}`)
+}
+
+// Run daily
+setInterval(backupDatabase, 24 * 60 * 60 * 1000)
+```
+
+<Tip>
+  Store backups in cloud storage (S3, Google Drive, Dropbox) for disaster recovery.
+</Tip>
+
+## Migrations
+
+Currently, there's no migration system. For schema changes:
+
+```typescript
+// Add new column
+await db.exec(`ALTER TABLE content ADD COLUMN viewCount INTEGER DEFAULT 0;`)
+
+// Create new table
+await db.exec(`
+  CREATE TABLE IF NOT EXISTS content_history (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    contentId INTEGER NOT NULL,
+    changedAt TEXT DEFAULT (datetime('now')),
+    changeType TEXT NOT NULL,
+    FOREIGN KEY (contentId) REFERENCES content(id) ON DELETE CASCADE
+  );
+`)
+```
+
+<Warning>
+  SQLite has limited ALTER TABLE support. You cannot:
+  - Drop columns (before SQLite 3.35.0)
+  - Modify column types
+  - Add NOT NULL columns (without default)
+  
+  For complex changes, use the [table recreation pattern](https://www.sqlite.org/lang_altertable.html#making_other_kinds_of_table_schema_changes).
+</Warning>
+
+## Comparison: SQLite vs Alternatives
+
+<Tabs>
+  <Tab title="SQLite (Current)">
+    **Pros:**
+    - Zero configuration
+    - Single file storage
+    - Fast for single-user apps
+    - ACID compliant
+    - No separate server
+    
+    **Cons:**
+    - Poor write concurrency
+    - No built-in replication
+    - Not ideal for >100GB datasets
+  </Tab>
+  
+  <Tab title="PostgreSQL">
+    **Pros:**
+    - Better concurrency
+    - Advanced features (JSONB, full-text search)
+    - Better scaling for multi-user apps
+    - Native vector extensions (pgvector)
+    
+    **Cons:**
+    - Requires server setup
+    - More complex deployment
+    - Overkill for single-user apps
+  </Tab>
+  
+  <Tab title="MongoDB">
+    **Pros:**
+    - Flexible schema
+    - Native JSON storage
+    - Good for rapid prototyping
+    
+    **Cons:**
+    - No ACID before v4.0
+    - Requires server
+    - No foreign key constraints
+    - Larger storage footprint
+  </Tab>
+  
+  <Tab title="Dedicated Vector DB (Pinecone, Weaviate)">
+    **Pros:**
+    - Optimized for vector search
+    - HNSW indexing for fast ANN
+    - Scales to billions of vectors
+    
+    **Cons:**
+    - Additional service to run/pay for
+    - Overkill for under 10K items
+    - More complex architecture
+  </Tab>
+</Tabs>
+
+## When to Migrate Away from SQLite
+
+Consider migrating when:
+
+<Steps>
+  <Step title="Multi-User Concurrency">
+    If you need multiple users writing simultaneously, PostgreSQL is better
+  </Step>
+  <Step title="Large Scale (>100K items)">
+    Vector search becomes slow; consider a dedicated vector DB
+  </Step>
+  <Step title="Geographic Distribution">
+    SQLite requires local file access; use cloud database for distributed teams
+  </Step>
+  <Step title="Advanced Search Features">
+    PostgreSQL's full-text search or Elasticsearch for complex queries
+  </Step>
+</Steps>
+
+<Info>
+  For personal knowledge management (1-10 users, under 100K items), SQLite remains the best choice due to its simplicity and zero maintenance.
+</Info>
+
+## Related Topics
+
+<CardGroup cols={2}>
+  <Card title="System Architecture" icon="sitemap" href="/architecture/overview">
+    See how the database fits into the overall system
+  </Card>
+  <Card title="Vector Embeddings" icon="wave-square" href="/architecture/vector-embeddings">
+    Learn about the embeddings stored in the database
+  </Card>
+  <Card title="RAG Pipeline" icon="diagram-project" href="/architecture/rag-pipeline">
+    How database queries power semantic search
+  </Card>
+  <Card title="API Reference" icon="code" href="/api/content/create">
+    Learn how to interact with content in the database
+  </Card>
+</CardGroup>

@@ -1,0 +1,192 @@
+---
+title: Introduction
+description: Learn about MIND-f-LAYER, an AI-powered Second Brain application that transforms your digital knowledge into an intelligent, searchable vault
+---
+
+# Welcome to MIND-f-LAYER
+
+**MIND-f-LAYER** is a full-stack "Second Brain" application designed to store, manage, and semantically query your digital knowledge. By leveraging modern AI and vector embeddings, it transforms a static collection of links and notes into an interactive, searchable intelligence layer.
+
+## What is MIND-f-LAYER?
+
+MIND-f-LAYER isn't just a place to store links—it's a tool that learns what you know. Think of it as your personal knowledge vault that understands the *meaning* behind your saved content, not just keywords.
+
+<Note>
+  Unlike traditional bookmarking tools, MIND-f-LAYER uses **semantic search** to find content based on meaning, not just matching words.
+</Note>
+
+## Key Features
+
+### Intelligent Content Storage
+Save articles, videos, tweets, documents, and more with rich metadata including titles, descriptions, and tags. Every piece of content is automatically processed and indexed for semantic search.
+
+### RAG-Powered AI Queries
+Ask natural language questions and get accurate answers based *only* on your saved content. The system uses **Retrieval-Augmented Generation (RAG)** to prevent AI hallucinations.
+
+### Vector Embeddings & Semantic Search
+Every piece of content is converted into a high-dimensional vector using Google's `gemini-embedding-001` model. When you query your brain, the system performs **cosine similarity** searches to find the most relevant content.
+
+### Secure & Private
+- JWT-based authentication
+- Bcrypt password hashing
+- User-scoped content isolation
+- Optional public sharing with unique hash links
+
+## How It Works
+
+<Steps>
+  <Step title="Ingest">
+    You save a link or note to your vault with a title, description, and tags.
+  </Step>
+  
+  <Step title="Vectorize">
+    The system automatically generates a mathematical "fingerprint" (768-dimension embedding vector) of that content using Gemini's embedding model.
+  </Step>
+  
+  <Step title="Query">
+    You ask a question in natural language through the Brain AI interface.
+  </Step>
+  
+  <Step title="Retrieve">
+    The system converts your question into a vector and finds content that is mathematically most similar using cosine similarity (score > 0.3 threshold).
+  </Step>
+  
+  <Step title="Answer">
+    The AI (Gemini 2.5 Flash-Lite) reads those specific pieces of content and generates a precise, grounded answer.
+  </Step>
+</Steps>
+
+## Architecture Overview
+
+MIND-f-LAYER follows a decoupled **Client-Server Architecture** optimized for speed and semantic intelligence.
+
+### Frontend (Interaction Layer)
+Built with **React** and **Vite**, featuring:
+- Custom API Explorer for real-time endpoint interaction
+- Glassmorphic Dark Theme for premium UX
+- Fast Single Page Application (SPA) architecture
+
+### Backend (Intelligence Core)
+Powered by **Express.js** with **TypeScript**, providing:
+- RESTful API with `/api/v1` versioning
+- JWT-based authentication middleware
+- Advanced exponential backoff retry mechanism for AI APIs
+- Rate limit handling (429/503 errors)
+
+### Database (Storage Layer)
+**SQLite** database storing:
+- User accounts and authentication data
+- Content metadata (links, titles, descriptions, tags)
+- Vector embeddings (768-dimensional arrays stored as JSON)
+- Share links for public brain access
+
+### AI Layer (Intelligence)
+**Google Gemini AI** integration:
+- `gemini-embedding-001` for vector embeddings
+- `gemini-2.5-flash-lite` for RAG-based question answering
+- Automatic retry logic for API resilience
+
+## Core Concepts
+
+<AccordionGroup>
+  <Accordion title="Vector Embeddings">
+    Text is converted into mathematical coordinates in 768-dimensional space. Similar concepts cluster together, enabling semantic search that understands meaning rather than just matching keywords.
+    
+    ```typescript
+    // From src/services/ai.service.ts:53
+    export async function generateEmbedding(text: string): Promise<number[]> {
+      const result = await model.embedContent({
+        content: { parts: [{ text }], role: "user" },
+        taskType: "RETRIEVAL_DOCUMENT",
+      })
+      return result.embedding.values.slice(0, 768)
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="Semantic Search vs Keyword Search">
+    Traditional search looks for exact word matches. Semantic search understands that "React hooks" and "React state management" are related concepts, even without shared keywords.
+    
+    The system uses **cosine similarity** to measure how "close" two vectors are in meaning:
+    
+    ```typescript
+    // From src/services/ai.service.ts:91
+    export function cosineSimilarity(a: number[], b: number[]): number {
+      let dotProduct = 0, normA = 0, normB = 0
+      for (let i = 0; i < length; i++) {
+        dotProduct += a[i] * b[i]
+        normA += a[i] * a[i]
+        normB += b[i] * b[i]
+      }
+      return dotProduct / (Math.sqrt(normA) * Math.sqrt(normB))
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="RAG (Retrieval-Augmented Generation)">
+    RAG prevents AI hallucinations by grounding responses in your actual saved content. Instead of generating answers from its training data, the AI only uses the specific content items retrieved from your vault.
+    
+    The workflow:
+    1. Find top-K most relevant content (semantic search)
+    2. Build a context prompt with this content
+    3. Ask the LLM to answer based *only* on this context
+    4. Return the grounded answer + sources
+  </Accordion>
+
+  <Accordion title="Content Types">
+    MIND-f-LAYER supports diverse content types:
+    - `article` - Blog posts, news articles
+    - `video` - YouTube, courses, tutorials
+    - `tweet` - Social media posts
+    - `document` - PDFs, papers, notes
+    - `audio` - Podcasts, audiobooks
+    - `image` - Infographics, diagrams
+    - `other` - Anything else
+  </Accordion>
+</AccordionGroup>
+
+## Why MIND-f-LAYER?
+
+<CardGroup cols={2}>
+  <Card title="Learn by Building" icon="graduation-cap">
+    Master modern AI concepts like vector embeddings, RAG, and semantic search through a real production application.
+  </Card>
+  
+  <Card title="Production-Ready" icon="rocket">
+    Full authentication, error handling, retry logic, and database schema ready for deployment.
+  </Card>
+  
+  <Card title="Open & Extensible" icon="code">
+    TypeScript codebase with clear separation of concerns. Easy to extend with new AI models or vector databases.
+  </Card>
+  
+  <Card title="Privacy-First" icon="lock">
+    Your data stays in your SQLite database. Optional sharing is controlled by unique hash links you can revoke anytime.
+  </Card>
+</CardGroup>
+
+## Technologies Used
+
+- **Frontend**: React, Vite, React Router
+- **Backend**: Express.js, TypeScript, Node.js
+- **Database**: SQLite with foreign key constraints
+- **AI**: Google Gemini API (embeddings + generation)
+- **Auth**: JWT tokens, Bcrypt password hashing
+- **Validation**: Zod schema validation
+- **Build**: tsx for TypeScript execution
+
+<Warning>
+  MIND-f-LAYER requires a free **Gemini API key** from Google AI Studio for AI features. Without it, basic CRUD operations still work, but embedding generation and queries will fail gracefully.
+</Warning>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Quickstart" icon="play" href="/quickstart">
+    Get up and running in 5 minutes with our step-by-step guide
+  </Card>
+  
+  <Card title="Installation" icon="download" href="/installation">
+    Complete setup instructions for local development
+  </Card>
+</CardGroup>

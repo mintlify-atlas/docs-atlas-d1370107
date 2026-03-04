@@ -1,0 +1,547 @@
+---
+title: 'RAG Pipeline'
+description: 'Detailed explanation of the Retrieval-Augmented Generation workflow in MIND-f-LAYER'
+icon: 'diagram-project'
+---
+
+## What is RAG?
+
+Retrieval-Augmented Generation (RAG) is an AI technique that combines:
+
+1. **Retrieval**: Finding relevant information from a knowledge base
+2. **Augmentation**: Injecting that information as context
+3. **Generation**: Using an LLM to synthesize a natural language answer
+
+Instead of relying solely on an LLM's training data, RAG grounds responses in your personal knowledge base, making answers more accurate, relevant, and up-to-date.
+
+<Note>
+  MIND-f-LAYER uses RAG to query your saved content (articles, videos, documents) and get AI-powered answers based on **your** knowledge, not generic internet information.
+</Note>
+
+## RAG Pipeline Overview
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                        User Query                               │
+│              "What did I learn about RAG?"                      │
+└─────────────────────┬───────────────────────────────────────────┘
+                      │
+                      ▼
+┌─────────────────────────────────────────────────────────────────┐
+│  STEP 1: Generate Query Embedding                               │
+│  ┌──────────────────────────────────────────────────────────┐  │
+│  │  Gemini Embedding Model (gemini-embedding-001)           │  │
+│  │  Input: "What did I learn about RAG?"                    │  │
+│  │  Output: [0.234, -0.567, 0.891, ... ] (768 dimensions)   │  │
+│  │  Task Type: RETRIEVAL_QUERY                              │  │
+│  └──────────────────────────────────────────────────────────┘  │
+└─────────────────────┬───────────────────────────────────────────┘
+                      │
+                      ▼
+┌─────────────────────────────────────────────────────────────────┐
+│  STEP 2: Retrieve All User's Content Embeddings from DB        │
+│  ┌──────────────────────────────────────────────────────────┐  │
+│  │  SELECT e.contentId, e.embedding, c.title, c.link        │  │
+│  │  FROM embeddings e                                        │  │
+│  │  JOIN content c ON e.contentId = c.id                    │  │
+│  │  WHERE c.userId = ?                                       │  │
+│  └──────────────────────────────────────────────────────────┘  │
+└─────────────────────┬───────────────────────────────────────────┘
+                      │
+                      ▼
+┌─────────────────────────────────────────────────────────────────┐
+│  STEP 3: Compute Cosine Similarity (In-Memory)                 │
+│  ┌──────────────────────────────────────────────────────────┐  │
+│  │  For each stored embedding:                              │  │
+│  │    score = cosineSimilarity(queryEmbed, contentEmbed)    │  │
+│  │                                                           │  │
+│  │  Results:                                                 │  │
+│  │    • "Introduction to RAG" → 0.89                        │  │
+│  │    • "Vector Databases 101" → 0.76                       │  │
+│  │    • "My Vacation Photos" → 0.12                         │  │
+│  └──────────────────────────────────────────────────────────┘  │
+└─────────────────────┬───────────────────────────────────────────┘
+                      │
+                      ▼
+┌─────────────────────────────────────────────────────────────────┐
+│  STEP 4: Rank, Filter, and Select Top K Results                │
+│  ┌──────────────────────────────────────────────────────────┐  │
+│  │  • Sort by similarity score (descending)                 │  │
+│  │  • Take top K items (default K=5)                        │  │
+│  │  • Filter out low relevance (score < 0.3)               │  │
+│  │  • Fetch tags for each result                           │  │
+│  └──────────────────────────────────────────────────────────┘  │
+└─────────────────────┬───────────────────────────────────────────┘
+                      │
+                      ▼
+┌─────────────────────────────────────────────────────────────────┐
+│  STEP 5: Build Context Prompt from Relevant Content            │
+│  ┌──────────────────────────────────────────────────────────┐  │
+│  │  [1] "Introduction to RAG" (article)                     │  │
+│  │     Link: https://example.com/rag-intro                  │  │
+│  │     Description: RAG combines retrieval with LLMs...     │  │
+│  │     Tags: AI, RAG, LLM                                   │  │
+│  │     Relevance Score: 89.0%                               │  │
+│  │                                                           │  │
+│  │  [2] "Vector Databases 101" (article)                    │  │
+│  │     ...                                                   │  │
+│  └──────────────────────────────────────────────────────────┘  │
+└─────────────────────┬───────────────────────────────────────────┘
+                      │
+                      ▼
+┌─────────────────────────────────────────────────────────────────┐
+│  STEP 6: Send to Gemini for Answer Generation                  │
+│  ┌──────────────────────────────────────────────────────────┐  │
+│  │  Model: gemini-2.5-flash-lite                            │  │
+│  │  System Prompt: "You are a helpful AI assistant..."      │  │
+│  │  Context: [Relevant content from Step 5]                 │  │
+│  │  User Query: "What did I learn about RAG?"               │  │
+│  └──────────────────────────────────────────────────────────┘  │
+└─────────────────────┬───────────────────────────────────────────┘
+                      │
+                      ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                    AI-Generated Answer                          │
+│  "Based on your saved content, you learned that RAG            │
+│   (Retrieval-Augmented Generation) combines semantic search    │
+│   with LLMs to provide grounded answers. You saved an article  │
+│   'Introduction to RAG' that explains..."                      │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+## Step-by-Step Implementation
+
+### Step 1: Generate Query Embedding
+
+The first step converts the user's natural language query into a vector embedding:
+
+```typescript src/controllers/brain.controller.ts
+// Generate query embedding
+const queryEmbedding = await generateQueryEmbedding(userQuery)
+```
+
+This calls the AI service:
+
+```typescript src/services/ai.service.ts
+export async function generateQueryEmbedding(
+    query: string
+): Promise<number[]> {
+    return withRetry(async () => {
+        const ai = getGenAI()
+        const model = ai.getGenerativeModel({ model: EMBEDDING_MODEL })
+
+        const result = await model.embedContent({
+            content: { parts: [{ text: query }], role: "user" },
+            taskType: "RETRIEVAL_QUERY" as any,  // Optimized for queries
+        })
+
+        const embedding = result.embedding.values
+        return embedding.slice(0, EMBEDDING_DIMENSIONS)  // 768 dims
+    })
+}
+```
+
+<Info>
+  The `taskType: "RETRIEVAL_QUERY"` parameter tells Gemini to optimize the embedding for search queries, as opposed to document embeddings which use `"RETRIEVAL_DOCUMENT"`.
+</Info>
+
+### Step 2: Retrieve User's Content Embeddings
+
+Next, we fetch all embeddings associated with the user's saved content:
+
+```typescript src/controllers/brain.controller.ts
+const rows = await db.all(
+    `SELECT e.contentId, e.embedding, c.title, c.link, c.type, c.description
+     FROM embeddings e
+     JOIN content c ON e.contentId = c.id
+     WHERE c.userId = ?`,
+    [userId]
+)
+```
+
+<Note>
+  Embeddings are stored as JSON strings in SQLite. They're parsed back into number arrays for similarity computation.
+</Note>
+
+### Step 3: Compute Cosine Similarity
+
+For each stored embedding, we compute its similarity to the query embedding:
+
+```typescript src/controllers/brain.controller.ts
+const scored = rows
+    .map((row: any) => {
+        const storedEmbedding = JSON.parse(row.embedding) as number[]
+        const score = cosineSimilarity(queryEmbedding, storedEmbedding)
+        return {
+            id: row.contentId,
+            title: row.title,
+            link: row.link,
+            type: row.type,
+            description: row.description ?? "",
+            score,
+            tags: [] as string[],
+        }
+    })
+```
+
+The cosine similarity function measures how "aligned" two vectors are:
+
+```typescript src/services/ai.service.ts
+export function cosineSimilarity(a: number[], b: number[]): number {
+    const length = Math.min(a.length, b.length)
+    let dotProduct = 0
+    let normA = 0
+    let normB = 0
+
+    for (let i = 0; i < length; i++) {
+        const valA = a[i]!
+        const valB = b[i]!
+        dotProduct += valA * valB
+        normA += valA * valA
+        normB += valB * valB
+    }
+
+    const denominator = Math.sqrt(normA) * Math.sqrt(normB)
+    if (denominator === 0) return 0
+    return dotProduct / denominator  // Returns value between -1 and 1
+}
+```
+
+<Accordion title="Why Cosine Similarity?">
+  Cosine similarity measures the angle between two vectors, ignoring magnitude. A score of 1.0 means identical direction (perfect match), 0 means orthogonal (unrelated), and -1 means opposite direction.
+
+  It's ideal for high-dimensional embeddings because it focuses on semantic similarity rather than absolute distance.
+</Accordion>
+
+### Step 4: Rank and Filter Results
+
+We sort results by similarity score and apply filtering:
+
+```typescript src/controllers/brain.controller.ts
+const scored = rows
+    .map(/* ... */)
+    .sort((a, b) => b.score - a.score)  // Sort descending
+    .slice(0, topK)  // Take top K (default 5)
+
+// Fetch tags for each result
+for (const item of scored) {
+    const tags = await db.all(
+        `SELECT t.title FROM tags t
+         JOIN content_tags ct ON t.id = ct.tagId
+         WHERE ct.contentId = ?`,
+        [item.id]
+    )
+    item.tags = tags.map((t: any) => t.title as string)
+}
+
+// Filter to only reasonably relevant results (similarity > 0.3)
+const relevant = scored.filter((item) => item.score > 0.3)
+```
+
+<Warning>
+  The threshold of 0.3 is configurable. Lower thresholds include more results but may reduce relevance. Higher thresholds are more strict but may miss edge cases.
+</Warning>
+
+### Step 5: Build Context Prompt
+
+We format the relevant content into a structured prompt:
+
+```typescript src/services/ai.service.ts
+const contextParts = relevantContent.map((item, index) => {
+    const tags = item.tags.length > 0 ? `Tags: ${item.tags.join(', ')}` : ""
+    return `[${index + 1}] "${item.title}" (${item.type})
+  Link: ${item.link}
+  Description: ${item.description}
+  ${tags}
+  Relevance Score: ${(item.score * 100).toFixed(1)}%`
+})
+
+const systemPrompt = `You are a helpful AI assistant for a "Second Brain" knowledge management app. 
+The user has saved various content items (articles, videos, tweets, documents, etc.) in their second brain.
+Below is the relevant content from their saved items that matches their query.
+
+=== SAVED CONTENT ===
+${contextParts.join("\n\n")}
+=== END SAVED CONTENT ===
+
+Instructions:
+- Answer the user's question based on their saved content above.
+- Reference specific items by their title when relevant.
+- If the content doesn't seem to answer the question, say so and suggest what they might save to fill the gap.
+- Be concise but helpful.
+- If there is no relevant content at all, let the user know their second brain doesn't have information on this topic yet.`
+```
+
+<Accordion title="Example Context Prompt">
+  ```
+  === SAVED CONTENT ===
+  [1] "Introduction to RAG" (article)
+    Link: https://example.com/rag-intro
+    Description: Comprehensive guide to Retrieval-Augmented Generation
+    Tags: AI, RAG, LLM
+    Relevance Score: 89.2%
+
+  [2] "Building a Vector Database" (article)
+    Link: https://example.com/vector-db
+    Description: How to build and query vector databases
+    Tags: embeddings, databases
+    Relevance Score: 67.3%
+  === END SAVED CONTENT ===
+  ```
+</Accordion>
+
+### Step 6: Generate Answer with LLM
+
+Finally, we send the context and query to Gemini for answer generation:
+
+```typescript src/services/ai.service.ts
+export async function queryBrain(
+    query: string,
+    relevantContent: ContentWithScore[]
+): Promise<string> {
+    return withRetry(async () => {
+        const ai = getGenAI()
+        const model = ai.getGenerativeModel({ model: GENERATION_MODEL })
+
+        // Build context (shown above)
+        const systemPrompt = /* ... */
+
+        const result = await model.generateContent([
+            { text: systemPrompt },
+            { text: `User's question: ${query}` },
+        ])
+
+        const response = result.response
+        return response.text()
+    })
+}
+```
+
+<Info>
+  The `gemini-2.5-flash-lite` model is optimized for speed, typically responding in 1-3 seconds.
+</Info>
+
+## Full Query Controller
+
+Here's the complete implementation from `brain.controller.ts:19-123`:
+
+```typescript src/controllers/brain.controller.ts
+export async function query(req: Request, res: Response) {
+    try {
+        const userId = req.userId
+        if (!userId) {
+            return res.status(401).json({ error: "Unauthorized" })
+        }
+
+        const parsed = querySchema.parse(req.body)
+        const { query: userQuery, topK } = parsed
+        const db = getDB()
+
+        // 1. Get all embeddings for this user's content
+        const rows = await db.all(
+            `SELECT e.contentId, e.embedding, c.title, c.link, c.type, c.description
+             FROM embeddings e
+             JOIN content c ON e.contentId = c.id
+             WHERE c.userId = ?`,
+            [userId]
+        )
+
+        if (rows.length === 0) {
+            return res.status(200).json({
+                message: "Your vault is empty! Start saving content to query it.",
+                answer: null,
+                relevantContent: [],
+            })
+        }
+
+        // 2. Generate query embedding
+        const queryEmbedding = await generateQueryEmbedding(userQuery)
+
+        // 3. Compute cosine similarity against all stored embeddings
+        const scored = rows
+            .map((row: any) => {
+                const storedEmbedding = JSON.parse(row.embedding) as number[]
+                const score = cosineSimilarity(queryEmbedding, storedEmbedding)
+                return {
+                    id: row.contentId,
+                    title: row.title,
+                    link: row.link,
+                    type: row.type,
+                    description: row.description ?? "",
+                    score,
+                    tags: [] as string[],
+                }
+            })
+            .sort((a, b) => b.score - a.score)
+            .slice(0, topK)
+
+        // 4. Fetch tags for the top results
+        for (const item of scored) {
+            const tags = await db.all(
+                `SELECT t.title FROM tags t
+                 JOIN content_tags ct ON t.id = ct.tagId
+                 WHERE ct.contentId = ?`,
+                [item.id]
+            )
+            item.tags = tags.map((t: any) => t.title as string)
+        }
+
+        // 5. Filter to only reasonably relevant results (similarity > 0.3)
+        const relevant = scored.filter((item) => item.score > 0.3)
+
+        if (relevant.length === 0) {
+            return res.status(200).json({
+                message: "No content in your second brain seems related to this query.",
+                answer: "I couldn't find any saved content that's relevant to your question.",
+                relevantContent: [],
+            })
+        }
+
+        // 6. Send to Gemini for RAG answer
+        const answer = await queryBrain(userQuery, relevant)
+
+        res.status(200).json({
+            message: "Query completed",
+            answer,
+            relevantContent: relevant.map((item) => ({
+                id: item.id,
+                title: item.title,
+                link: item.link,
+                type: item.type,
+                score: parseFloat((item.score * 100).toFixed(1)),
+                tags: item.tags,
+            })),
+        })
+    } catch (err: any) {
+        if (err.name === "ZodError") {
+            return res.status(400).json({ 
+                error: "Validation failed", 
+                details: err.errors 
+            })
+        }
+        if (err.message?.includes("GEMINI_API_KEY")) {
+            return res.status(503).json({
+                error: "AI service unavailable",
+                message: err.message,
+            })
+        }
+        console.error("Brain query error:", err)
+        res.status(500).json({ error: "Failed to query brain" })
+    }
+}
+```
+
+## API Request/Response Example
+
+### Request
+
+```bash
+POST /api/v1/brain/query
+Content-Type: application/json
+Authorization: Bearer <jwt_token>
+
+{
+  "query": "What did I learn about vector databases?",
+  "topK": 5
+}
+```
+
+### Response
+
+```json
+{
+  "message": "Query completed",
+  "answer": "Based on your saved content, you learned that vector databases store high-dimensional embeddings and enable fast similarity search. Your article 'Building a Vector Database' explains that they use specialized indexing structures like HNSW for approximate nearest neighbor search. You also saved 'Pinecone vs Weaviate' which compares managed vector database solutions.",
+  "relevantContent": [
+    {
+      "id": 42,
+      "title": "Building a Vector Database",
+      "link": "https://example.com/vector-db",
+      "type": "article",
+      "score": 87.3,
+      "tags": ["embeddings", "databases", "AI"]
+    },
+    {
+      "id": 58,
+      "title": "Pinecone vs Weaviate Comparison",
+      "link": "https://example.com/pinecone-weaviate",
+      "type": "article",
+      "score": 73.1,
+      "tags": ["vector-db", "tools"]
+    }
+  ]
+}
+```
+
+## Performance Characteristics
+
+<CardGroup cols={2}>
+  <Card title="Embedding Generation" icon="clock">
+    200-500ms average latency via Gemini API
+  </Card>
+  <Card title="Similarity Computation" icon="gauge">
+    Under 10ms for 100 items (in-memory calculation)
+  </Card>
+  <Card title="LLM Response" icon="hourglass-half">
+    1-3 seconds for gemini-2.5-flash-lite
+  </Card>
+  <Card title="Total Query Time" icon="timer">
+    1.5-3.5 seconds end-to-end
+  </Card>
+</CardGroup>
+
+## Advantages of This Approach
+
+<AccordionGroup>
+  <Accordion title="No Vector Database Required">
+    For personal knowledge management with 100-1000 items, in-memory cosine similarity is fast enough. This eliminates the complexity of running Pinecone, Weaviate, or Qdrant.
+  </Accordion>
+
+  <Accordion title="Always Fresh Data">
+    Unlike pure LLM responses, RAG always retrieves the latest saved content. Your second brain stays up-to-date without retraining.
+  </Accordion>
+
+  <Accordion title="Transparent Sources">
+    Every answer includes the source content and relevance scores, allowing users to verify and explore further.
+  </Accordion>
+
+  <Accordion title="Cost-Effective">
+    Using Gemini's free tier, you can perform thousands of queries per month at zero cost.
+  </Accordion>
+</AccordionGroup>
+
+## Limitations and Future Improvements
+
+<Warning>
+  **Current Limitations:**
+  - Similarity search is brute-force (compares against all embeddings)
+  - Doesn't scale beyond ~10,000 items efficiently
+  - No hybrid search (combining semantic + keyword matching)
+  - No re-ranking or query refinement
+</Warning>
+
+<Tip>
+  **Potential Improvements:**
+  - Add HNSW or FAISS index for faster approximate search
+  - Implement hybrid search (semantic + BM25)
+  - Add query expansion using LLM
+  - Support multi-turn conversations with history
+  - Add citation links in generated answers
+</Tip>
+
+## Related Topics
+
+<CardGroup cols={2}>
+  <Card title="Vector Embeddings" icon="wave-square" href="/architecture/vector-embeddings">
+    Deep dive into how embeddings enable semantic search
+  </Card>
+  <Card title="Database Schema" icon="database" href="/architecture/database">
+    Understand how embeddings are stored in SQLite
+  </Card>
+  <Card title="API Reference" icon="code" href="/api/brain/query">
+    Explore the query endpoint in detail
+  </Card>
+  <Card title="System Architecture" icon="sitemap" href="/architecture/overview">
+    High-level system architecture overview
+  </Card>
+</CardGroup>

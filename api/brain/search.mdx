@@ -1,0 +1,232 @@
+---
+title: 'Semantic Search'
+api: 'POST /api/v1/brain/search'
+description: 'Find similar content using semantic search without LLM-generated answers'
+---
+
+Perform pure semantic search across your saved content. This endpoint returns ranked results based on similarity scores without generating AI answers, making it faster and more cost-effective than the `/query` endpoint.
+
+<Note>
+  **Search vs Query**: The `/search` endpoint returns only similarity-ranked content without an LLM answer. Use `/query` if you want AI-generated answers based on your content (RAG).
+</Note>
+
+## Authentication
+
+This endpoint requires authentication. Include a valid JWT token in the Authorization header.
+
+## Request Body
+
+<ParamField body="query" type="string" required>
+  The search term or phrase to find similar content.
+  
+  - Minimum length: 1 character
+  - Maximum length: 500 characters
+  - Cannot be empty
+</ParamField>
+
+<ParamField body="topK" type="number" default={5}>
+  Number of most similar content items to return.
+  
+  - Must be an integer
+  - Minimum: 1
+  - Maximum: 20
+  - Default: 5
+</ParamField>
+
+## Response
+
+<ResponseField name="message" type="string">
+  Status message describing the search result.
+</ResponseField>
+
+<ResponseField name="results" type="array">
+  Array of content items ranked by semantic similarity (highest score first).
+  
+  <Expandable title="Result Item Object">
+    <ResponseField name="id" type="number">
+      Unique identifier for the content item.
+    </ResponseField>
+    
+    <ResponseField name="title" type="string">
+      Title of the content.
+    </ResponseField>
+    
+    <ResponseField name="link" type="string">
+      URL of the original content.
+    </ResponseField>
+    
+    <ResponseField name="type" type="string">
+      Content type: `article`, `video`, `tweet`, `document`, `audio`, `image`, or `other`.
+    </ResponseField>
+    
+    <ResponseField name="description" type="string">
+      Content description (may be empty string).
+    </ResponseField>
+    
+    <ResponseField name="score" type="number">
+      Similarity score as a percentage (0-100). Higher scores indicate greater semantic similarity to the search query.
+      
+      Unlike `/query`, this endpoint does **not** filter out low-scoring results - it returns the top K items regardless of score.
+    </ResponseField>
+    
+    <ResponseField name="tags" type="array">
+      Array of tag strings associated with this content.
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+## How It Works
+
+1. **Query Embedding**: Your search query is converted to a vector embedding
+2. **Similarity Calculation**: Cosine similarity is computed between the query embedding and all stored content embeddings
+3. **Ranking**: Results are sorted by similarity score (descending) and the top K items are returned
+4. **No LLM**: Unlike `/query`, no AI model is called to generate answers - you get raw similarity scores
+
+## Example Request
+
+```bash
+curl -X POST https://api.example.com/api/v1/brain/search \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "query": "machine learning deployment",
+    "topK": 10
+  }'
+```
+
+## Example Response
+
+### Success with Results
+
+```json
+{
+  "message": "Search completed",
+  "results": [
+    {
+      "id": 156,
+      "title": "Deploying ML Models to Production",
+      "link": "https://example.com/ml-deploy",
+      "type": "article",
+      "description": "A comprehensive guide to deploying machine learning models in production environments.",
+      "score": 92.1,
+      "tags": ["machine-learning", "mlops", "deployment"]
+    },
+    {
+      "id": 203,
+      "title": "MLOps Best Practices",
+      "link": "https://example.com/mlops",
+      "type": "video",
+      "description": "Workshop on MLOps patterns and tools",
+      "score": 84.7,
+      "tags": ["mlops", "devops", "machine-learning"]
+    },
+    {
+      "id": 87,
+      "title": "Kubernetes for ML Workloads",
+      "link": "https://example.com/k8s-ml",
+      "type": "article",
+      "description": "Using Kubernetes to orchestrate ML model serving",
+      "score": 78.3,
+      "tags": ["kubernetes", "machine-learning", "infrastructure"]
+    },
+    {
+      "id": 45,
+      "title": "Model Monitoring in Production",
+      "link": "https://example.com/model-monitoring",
+      "type": "document",
+      "description": "",
+      "score": 71.9,
+      "tags": ["monitoring", "machine-learning"]
+    },
+    {
+      "id": 312,
+      "title": "Feature Stores Explained",
+      "link": "https://example.com/feature-stores",
+      "type": "article",
+      "description": "Understanding feature stores for ML systems",
+      "score": 65.4,
+      "tags": ["machine-learning", "data-engineering"]
+    }
+  ]
+}
+```
+
+### Empty Content
+
+```json
+{
+  "message": "No content to search through.",
+  "results": []
+}
+```
+
+## Understanding Similarity Scores
+
+Similarity scores are calculated using **cosine similarity** between embedding vectors and converted to percentages:
+
+- **90-100**: Extremely similar - nearly identical topics and concepts
+- **70-89**: Highly relevant - closely related content
+- **50-69**: Moderately relevant - shares some common themes
+- **30-49**: Loosely related - tangentially connected topics
+- **0-29**: Low relevance - minimal conceptual overlap
+
+<Note>
+  The `/search` endpoint returns all top K results regardless of score. If you need automatic relevance filtering (scores > 30%), use the `/query` endpoint instead.
+</Note>
+
+## Use Cases
+
+- **Content Discovery**: Find all content related to a topic, even with low similarity
+- **Duplicate Detection**: Identify similar or duplicate saved items
+- **Fast Lookup**: Quick searches without the overhead of LLM generation
+- **Building UI**: Power autocomplete, related content suggestions, or search interfaces
+
+## Error Responses
+
+<ResponseField name="401 Unauthorized">
+  ```json
+  {
+    "error": "Unauthorized"
+  }
+  ```
+  Missing or invalid authentication token.
+</ResponseField>
+
+<ResponseField name="400 Bad Request">
+  ```json
+  {
+    "error": "Validation failed",
+    "details": [
+      {
+        "path": ["topK"],
+        "message": "Number must be less than or equal to 20"
+      }
+    ]
+  }
+  ```
+  Request validation failed. Check the `details` array for specific issues.
+</ResponseField>
+
+<ResponseField name="503 Service Unavailable">
+  ```json
+  {
+    "error": "AI service unavailable",
+    "message": "GEMINI_API_KEY is not configured"
+  }
+  ```
+  The embedding service is not available. Note: Even though this endpoint doesn't generate LLM answers, it still requires the AI service for generating query embeddings.
+</ResponseField>
+
+<ResponseField name="500 Internal Server Error">
+  ```json
+  {
+    "error": "Search failed"
+  }
+  ```
+  An unexpected error occurred while processing the search.
+</ResponseField>
+
+## See Also
+
+- [Query](/api/brain/query) - Ask questions and get AI-generated answers (RAG)
+- [Share](/api/brain/share) - Share your brain with others

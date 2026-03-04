@@ -1,0 +1,136 @@
+---
+title: 'Delete Content'
+api: 'DELETE /api/v1/content'
+description: 'Delete a content item from your knowledge base'
+---
+
+Permanently delete a content item. Only the owner of the content can delete it. This operation also removes associated tags and embeddings via cascade deletion.
+
+## Authentication
+
+This endpoint requires authentication via JWT token.
+
+<CodeGroup>
+```bash cURL
+curl -X DELETE https://api.example.com/api/v1/content \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "contentId": 42
+  }'
+```
+
+```javascript JavaScript
+const response = await fetch('https://api.example.com/api/v1/content', {
+  method: 'DELETE',
+  headers: {
+    'Authorization': 'Bearer YOUR_JWT_TOKEN',
+    'Content-Type': 'application/json'
+  },
+  body: JSON.stringify({
+    contentId: 42
+  })
+});
+
+const data = await response.json();
+```
+
+```python Python
+import requests
+
+response = requests.delete(
+    'https://api.example.com/api/v1/content',
+    headers={
+        'Authorization': 'Bearer YOUR_JWT_TOKEN',
+        'Content-Type': 'application/json'
+    },
+    json={
+        'contentId': 42
+    }
+)
+
+data = response.json()
+```
+</CodeGroup>
+
+## Request Body
+
+<ParamField body="contentId" type="number" required>
+  The unique identifier of the content item to delete.
+  
+  **Validation**:
+  - Must be a positive integer
+  - Content must exist and belong to the authenticated user
+</ParamField>
+
+## Response
+
+<ResponseField name="message" type="string">
+  Success message confirming deletion
+</ResponseField>
+
+<CodeGroup>
+```json 200 Success
+{
+  "message": "Content deleted successfully"
+}
+```
+
+```json 400 Validation Error
+{
+  "error": "Validation failed",
+  "details": [
+    {
+      "code": "too_small",
+      "message": "Number must be greater than 0",
+      "path": ["contentId"]
+    }
+  ]
+}
+```
+
+```json 401 Unauthorized
+{
+  "error": "Unauthorized"
+}
+```
+
+```json 404 Not Found
+{
+  "error": "Content not found or not authorized"
+}
+```
+
+```json 500 Server Error
+{
+  "error": "Failed to delete content"
+}
+```
+</CodeGroup>
+
+## Authorization
+
+The endpoint verifies that:
+1. The user is authenticated (valid JWT token)
+2. The content item exists
+3. The content belongs to the authenticated user
+
+If the content doesn't exist or belongs to another user, a 404 error is returned.
+
+## Cascade Deletion
+
+When content is deleted, the following associated data is automatically removed:
+- **Content-Tag relationships**: Entries in the `content_tags` junction table
+- **Embeddings**: The semantic search embedding vector for this content
+
+The tags themselves are not deleted, as they may be used by other content items.
+
+## Important Notes
+
+<Warning>
+This operation is permanent and cannot be undone. Make sure you have the correct `contentId` before deleting.
+</Warning>
+
+<Info>
+Deletion is performed atomically. If any part of the cascade deletion fails, the entire operation is rolled back.
+</Info>

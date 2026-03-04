@@ -1,0 +1,428 @@
+---
+title: 'Querying Your Brain'
+description: 'Ask questions and search your Second Brain with AI-powered semantic search'
+icon: 'brain'
+---
+
+MIND-f-LAYER's most powerful feature is its ability to answer questions using your saved content through Retrieval-Augmented Generation (RAG). This guide explains how to query your brain effectively.
+
+## How Brain Queries Work
+
+When you ask a question, MIND-f-LAYER performs a sophisticated multi-step process:
+
+<Steps>
+  <Step title="Query Embedding">
+    Your question is converted into a 768-dimension vector using the same embedding model that processed your content.
+
+    ```typescript
+    // From src/services/ai.service.ts:71-85
+    export async function generateQueryEmbedding(query: string): Promise<number[]> {
+      const model = ai.getGenerativeModel({ model: EMBEDDING_MODEL })
+      const result = await model.embedContent({
+        content: { parts: [{ text: query }], role: "user" },
+        taskType: "RETRIEVAL_QUERY" // Optimized for search
+      })
+      return result.embedding.values.slice(0, EMBEDDING_DIMENSIONS)
+    }
+    ```
+  </Step>
+
+  <Step title="Similarity Search">
+    The system calculates cosine similarity between your query embedding and all stored content embeddings.
+
+    ```typescript
+    // From src/services/ai.service.ts:91-108
+    export function cosineSimilarity(a: number[], b: number[]): number {
+      let dotProduct = 0
+      let normA = 0
+      let normB = 0
+
+      for (let i = 0; i < length; i++) {
+        dotProduct += a[i] * b[i]
+        normA += a[i] * a[i]
+        normB += b[i] * b[i]
+      }
+
+      return dotProduct / (Math.sqrt(normA) * Math.sqrt(normB))
+    }
+    ```
+  </Step>
+
+  <Step title="Relevance Filtering">
+    Only content with a similarity score above 0.3 (30%) is considered relevant.
+
+    ```typescript
+    // From src/controllers/brain.controller.ts:81
+    const relevant = scored.filter((item) => item.score > 0.3)
+    ```
+  </Step>
+
+  <Step title="AI Response Generation">
+    The top results are sent to Gemini 2.5 Flash-Lite, which generates a grounded answer based only on your saved content.
+  </Step>
+</Steps>
+
+## Two Types of Queries
+
+MIND-f-LAYER offers two querying modes:
+
+### AI Query (Recommended)
+
+Asks a question and receives an AI-generated answer based on relevant content.
+
+**Endpoint:** `POST /api/v1/brain/query`
+
+<CodeGroup>
+
+```javascript JavaScript
+const response = await fetch('http://localhost:8000/api/v1/brain/query', {
+  method: 'POST',
+  headers: {
+    'Content-Type': 'application/json',
+    'Authorization': `Bearer ${token}`
+  },
+  body: JSON.stringify({
+    query: 'How do vector embeddings work in RAG systems?',
+    topK: 5 // Number of relevant items to retrieve (default: 5, max: 20)
+  })
+})
+
+const data = await response.json()
+console.log(data.answer) // AI-generated response
+console.log(data.relevantContent) // Source materials used
+```
+
+```bash cURL
+curl -X POST http://localhost:8000/api/v1/brain/query \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN" \
+  -d '{
+    "query": "How do vector embeddings work in RAG systems?",
+    "topK": 5
+  }'
+```
+
+```python Python
+import requests
+
+response = requests.post(
+    'http://localhost:8000/api/v1/brain/query',
+    headers={
+        'Content-Type': 'application/json',
+        'Authorization': f'Bearer {token}'
+    },
+    json={
+        'query': 'How do vector embeddings work in RAG systems?',
+        'topK': 5
+    }
+)
+
+data = response.json()
+print(data['answer'])
+print(f"Used {len(data['relevantContent'])} sources")
+```
+
+</CodeGroup>
+
+**Response Format:**
+
+```json
+{
+  "message": "Query completed",
+  "answer": "Vector embeddings in RAG systems work by converting text into high-dimensional numerical representations...",
+  "relevantContent": [
+    {
+      "id": 42,
+      "title": "Understanding Vector Embeddings",
+      "link": "https://example.com/embeddings",
+      "type": "article",
+      "score": 87.3,
+      "tags": ["ai", "embeddings"]
+    }
+  ]
+}
+```
+
+### Semantic Search
+
+Returns relevant content without generating an AI answer. Faster and doesn't consume AI credits.
+
+**Endpoint:** `POST /api/v1/brain/search`
+
+<CodeGroup>
+
+```javascript JavaScript
+const response = await fetch('http://localhost:8000/api/v1/brain/search', {
+  method: 'POST',
+  headers: {
+    'Content-Type': 'application/json',
+    'Authorization': `Bearer ${token}`
+  },
+  body: JSON.stringify({
+    query: 'machine learning tutorials',
+    topK: 10
+  })
+})
+
+const data = await response.json()
+console.log(data.results) // Ranked content items
+```
+
+```bash cURL
+curl -X POST http://localhost:8000/api/v1/brain/search \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN" \
+  -d '{
+    "query": "machine learning tutorials",
+    "topK": 10
+  }'
+```
+
+</CodeGroup>
+
+**Response Format:**
+
+```json
+{
+  "message": "Search completed",
+  "results": [
+    {
+      "id": 15,
+      "title": "Machine Learning Fundamentals",
+      "link": "https://example.com/ml-basics",
+      "type": "video",
+      "description": "Comprehensive ML tutorial series",
+      "score": 92.5,
+      "tags": ["machine-learning", "tutorial"]
+    }
+  ]
+}
+```
+
+## Understanding Relevance Scores
+
+Relevance scores indicate how semantically similar your query is to each piece of content:
+
+<CardGroup cols={3}>
+  <Card title="80-100%" icon="circle-check" color="#10b981">
+    **Highly Relevant**
+    
+    Content directly addresses your query. This is exactly what you're looking for.
+  </Card>
+  <Card title="50-79%" icon="circle-half-stroke" color="#f59e0b">
+    **Moderately Relevant**
+    
+    Content is related and may contain useful information, but isn't a perfect match.
+  </Card>
+  <Card title="30-49%" icon="circle" color="#6b7280">
+    **Weakly Relevant**
+    
+    Content has some connection to your query but may not be very useful.
+  </Card>
+</CardGroup>
+
+<Note>
+  Scores below 30% are automatically filtered out as irrelevant. This prevents the AI from being confused by unrelated content.
+</Note>
+
+### How Scores Are Calculated
+
+The score is the cosine similarity between two vectors, converted to a percentage:
+
+```typescript
+// From src/controllers/brain.controller.ts:52-67
+const scored = rows
+  .map((row) => {
+    const storedEmbedding = JSON.parse(row.embedding)
+    const score = cosineSimilarity(queryEmbedding, storedEmbedding)
+    return {
+      ...row,
+      score
+    }
+  })
+  .sort((a, b) => b.score - a.score) // Highest scores first
+  .slice(0, topK) // Take top K results
+
+// Convert to percentage for display
+const displayScore = parseFloat((item.score * 100).toFixed(1))
+```
+
+## Interpreting Results
+
+### When You Get Good Results
+
+You'll know your query was successful when:
+
+- **High relevance scores** (70%+) for top results
+- **Specific, detailed answer** that references your saved content
+- **Multiple source materials** contributing to the answer
+
+**Example:**
+
+```json
+{
+  "answer": "Based on your saved content, vector embeddings in RAG systems work by converting text into numerical representations. According to 'Understanding Vector Embeddings', these are high-dimensional vectors that capture semantic meaning. The article 'Building RAG Systems' explains that embeddings enable similarity search by measuring the mathematical distance between query and document vectors.",
+  "relevantContent": [
+    { "title": "Understanding Vector Embeddings", "score": 89.2 },
+    { "title": "Building RAG Systems", "score": 85.7 },
+    { "title": "Semantic Search Explained", "score": 78.3 }
+  ]
+}
+```
+
+### When Results Are Poor
+
+If you get weak results, you'll see:
+
+- **Low relevance scores** (below 50%)
+- **Generic or vague answer**
+- **Message indicating insufficient content**
+
+**Example:**
+
+```json
+{
+  "message": "No content in your second brain seems related to this query.",
+  "answer": "I couldn't find any saved content that's relevant to your question. Try saving more content or rephrasing your query.",
+  "relevantContent": []
+}
+```
+
+<Tip>
+  To improve results:
+  - Save more content related to the topic
+  - Add detailed descriptions to existing content
+  - Rephrase your query to be more specific
+  - Use terminology that matches your saved content
+</Tip>
+
+## Query Best Practices
+
+### Ask Specific Questions
+
+<CardGroup cols={2}>
+  <Card title="Good Queries" icon="check" color="#10b981">
+    - "How does React's useEffect hook handle cleanup?"
+    - "What are the best practices for prompt engineering?"
+    - "Explain the difference between RAG and fine-tuning"
+  </Card>
+  <Card title="Poor Queries" icon="xmark" color="#ef4444">
+    - "React" (too vague)
+    - "Tell me about AI" (too broad)
+    - "Stuff about programming" (too generic)
+  </Card>
+</CardGroup>
+
+### Use Natural Language
+
+Semantic search understands meaning, not just keywords. Write queries as if asking a human:
+
+```javascript
+// ✅ Natural language
+query: "What are effective strategies for managing technical debt?"
+
+// ❌ Keyword stuffing
+query: "technical debt management strategies best practices code"
+```
+
+### Adjust topK Based on Need
+
+The `topK` parameter controls how many relevant items are retrieved:
+
+- **topK: 3-5** (default) - Focused answers from the most relevant content
+- **topK: 8-12** - Broader answers incorporating more sources
+- **topK: 15-20** - Comprehensive answers for complex queries
+
+```javascript
+// For a focused answer on a specific topic
+body: { query: "How does JWT authentication work?", topK: 3 }
+
+// For a comprehensive overview
+body: { query: "Explain full-stack web development", topK: 15 }
+```
+
+<Note>
+  Higher `topK` values may include less relevant content, potentially diluting the quality of the AI's answer.
+</Note>
+
+## The AI's Grounding System
+
+MIND-f-LAYER uses a carefully crafted system prompt to ensure accurate, grounded responses:
+
+```typescript
+// From src/services/ai.service.ts:141-154
+const systemPrompt = `You are a helpful AI assistant for a "Second Brain" knowledge management app.
+The user has saved various content items (articles, videos, tweets, documents, etc.) in their second brain.
+Below is the relevant content from their saved items that matches their query.
+
+=== SAVED CONTENT ===
+${contextParts.join("\n\n")}
+=== END SAVED CONTENT ===
+
+Instructions:
+- Answer the user's question based on their saved content above.
+- Reference specific items by their title when relevant.
+- If the content doesn't seem to answer the question, say so and suggest what they might save to fill the gap.
+- Be concise but helpful.
+- If there is no relevant content at all, let the user know their second brain doesn't have information on this topic yet.`
+```
+
+This ensures the AI:
+- Only uses your saved content (no hallucinations)
+- Cites specific sources
+- Admits when information is missing
+- Suggests what to save next
+
+## Error Handling
+
+MIND-f-LAYER includes robust retry logic for API calls:
+
+```typescript
+// From src/services/ai.service.ts:26-48
+async function withRetry<T>(
+  fn: () => Promise<T>,
+  maxRetries = 3,
+  baseDelayMs = 1000
+): Promise<T> {
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    try {
+      return await fn()
+    } catch (err) {
+      // Retry on rate limit (429) or service unavailable (503)
+      if (err?.status === 429 || err?.status === 503) {
+        const delay = baseDelayMs * Math.pow(2, attempt) // Exponential backoff
+        await new Promise((resolve) => setTimeout(resolve, delay))
+        continue
+      }
+      throw err
+    }
+  }
+}
+```
+
+This automatically handles:
+- **Rate limiting** (HTTP 429) - waits with exponential backoff
+- **Service unavailable** (HTTP 503) - retries up to 3 times
+- **Network errors** - surfaces for user handling
+
+## Semantic Search vs AI Query
+
+Choose the right mode for your use case:
+
+| Feature | Semantic Search | AI Query |
+|---------|----------------|----------|
+| **Speed** | Fast | Slower (requires LLM) |
+| **Cost** | Free (only embeddings) | Uses AI credits |
+| **Output** | Ranked content list | Natural language answer |
+| **Use Case** | Finding specific content | Getting synthesized insights |
+| **Best For** | "What did I save about X?" | "Explain X based on what I know" |
+
+<Tip>
+  Use semantic search when you want to browse your content. Use AI query when you want an answer synthesized from multiple sources.
+</Tip>
+
+## Next Steps
+
+- Learn how to [share your knowledge](/guides/sharing) with public links
+- Master [saving content](/guides/saving-content) with effective descriptions
+- Explore the API reference for advanced usage

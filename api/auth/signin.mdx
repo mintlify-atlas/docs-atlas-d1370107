@@ -1,0 +1,145 @@
+---
+title: 'Sign In'
+description: 'Authenticate a user and receive a JWT token'
+---
+
+## Endpoint
+
+```
+POST /api/v1/auth/signin
+```
+
+Authenticates a user with their username and password. The provided password is compared against the stored bcrypt hash. Upon successful authentication, a JWT token is generated and returned.
+
+## Request Body
+
+<ParamField body="username" type="string" required>
+  The username of the account
+</ParamField>
+
+<ParamField body="password" type="string" required>
+  The password for the account
+</ParamField>
+
+## Response
+
+<ResponseField name="message" type="string">
+  Success message confirming authentication
+</ResponseField>
+
+<ResponseField name="token" type="string">
+  JWT authentication token valid for 7 days. Use this token in the Authorization header for authenticated requests.
+</ResponseField>
+
+<ResponseField name="userId" type="number">
+  The unique identifier of the authenticated user
+</ResponseField>
+
+## Example Request
+
+```bash
+curl -X POST https://api.example.com/api/v1/auth/signin \
+  -H "Content-Type: application/json" \
+  -d '{
+    "username": "johndoe",
+    "password": "securepass123"
+  }'
+```
+
+## Example Response
+
+<CodeGroup>
+```json 200 - Success
+{
+  "message": "Signed in successfully",
+  "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "userId": 42
+}
+```
+
+```json 400 - Validation Error
+{
+  "error": "Validation failed",
+  "details": [
+    {
+      "code": "too_small",
+      "minimum": 6,
+      "type": "string",
+      "inclusive": true,
+      "exact": false,
+      "message": "Password must be at least 6 characters",
+      "path": ["password"]
+    }
+  ]
+}
+```
+
+```json 401 - Invalid Credentials
+{
+  "error": "Invalid credentials"
+}
+```
+
+```json 500 - Server Error
+{
+  "error": "Something went wrong during signin"
+}
+```
+</CodeGroup>
+
+## Authentication Flow
+
+1. **Request Validation**: The request body is validated using Zod schema (same as signup)
+2. **User Lookup**: The system queries the database for a user with the provided username
+3. **Password Verification**: The provided password is compared against the stored bcrypt hash using `bcrypt.compare()`
+4. **Token Generation**: If credentials are valid, a JWT token is generated with the user's ID
+5. **Response**: The token and user ID are returned to the client
+
+## Password Verification
+
+The endpoint uses bcrypt to securely compare the provided password against the stored hash:
+
+```typescript
+const isMatch = await bcrypt.compare(password, user.password)
+```
+
+This ensures that passwords are never compared in plain text and that the comparison is resistant to timing attacks.
+
+## JWT Token Generation
+
+The JWT token is created with the following configuration:
+
+```typescript
+const token = jwt.sign({ userId: user.id }, JWT_SECRET, {
+  expiresIn: "7d"
+})
+```
+
+### Token Details
+
+- **Payload**: Contains `userId` which identifies the authenticated user
+- **Expiration**: 7 days from the time of generation
+- **Secret**: Signed using the application's JWT_SECRET
+
+### Using the Token
+
+Include the token in the Authorization header for authenticated requests:
+
+```bash
+curl -X GET https://api.example.com/api/v1/protected-endpoint \
+  -H "Authorization: Bearer YOUR_TOKEN_HERE"
+```
+
+## Status Codes
+
+- `200` - Authentication successful
+- `400` - Validation error (username or password doesn't meet requirements)
+- `401` - Invalid credentials (username not found or password incorrect)
+- `500` - Internal server error
+
+## Security Considerations
+
+- The endpoint returns the same error message for both non-existent users and incorrect passwords to prevent user enumeration
+- Passwords are never stored or transmitted in plain text
+- JWT tokens should be stored securely on the client side (e.g., httpOnly cookies or secure storage)
+- Tokens expire after 7 days and users will need to re-authenticate
